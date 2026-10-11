@@ -6,9 +6,10 @@ interface ExamCardProps {
   exam: ExamCategory;
   onClick: (exam: ExamCategory) => void;
   soundEnabled?: boolean;
+  testCount?: number;
 }
 
-export const ExamCard: React.FC<ExamCardProps> = ({ exam, onClick, soundEnabled = true }) => {
+export const ExamCard: React.FC<ExamCardProps> = ({ exam, onClick, soundEnabled = true, testCount }) => {
   const handleClick = () => {
     playTapSound(soundEnabled);
     onClick(exam);
@@ -46,7 +47,7 @@ export const ExamCard: React.FC<ExamCardProps> = ({ exam, onClick, soundEnabled 
         </span>
         {exam.active && (
           <span className="block text-[11px] text-slate-600 font-medium mt-0.5">
-            {exam.testCount} Tests
+            {testCount !== undefined ? testCount : exam.testCount} Live Tests
           </span>
         )}
       </div>

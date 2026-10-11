@@ -31,6 +31,14 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
 }) => {
   const [subjects, setSubjects] = useState<Subject[]>(SUBJECTS);
 
+  const getSubjectTotalQuestions = (subjectId: string) => {
+    const topics = TOPICS[subjectId] || [];
+    const topicIds = new Set(topics.map((t) => t.id));
+    return QUESTIONS_DATABASE.filter(
+      (q) => q.subjectId === subjectId || (q.topicId && topicIds.has(q.topicId))
+    ).length;
+  };
+
   useEffect(() => {
     const unsub = FirestoreService.subscribeSubjects((list) => {
       if (list && list.length > 0) setSubjects(list);
@@ -480,7 +488,7 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
                   {language === 'hi' ? topic.nameHi : topic.name}
                 </span>
                 <div className="flex items-center gap-2 text-xs text-slate-500">
-                  <span>{topic.questionCount} {language === 'hi' ? 'प्रश्न' : 'Questions'}</span>
+                  <span>{getTopicQuestions(topic).length} {language === 'hi' ? 'प्रश्न' : 'Questions'}</span>
                   <span>·</span>
                   <span
                     className={`font-semibold ${
@@ -545,7 +553,7 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
                 {language === 'hi' ? subject.nameHi : subject.name}
               </span>
               <span className="block text-[11px] text-slate-500 font-medium mt-0.5">
-                {subject.questionCount} {language === 'hi' ? 'प्रश्न' : 'Questions'}
+                {getSubjectTotalQuestions(subject.id)} {language === 'hi' ? 'प्रश्न' : 'Questions'}
               </span>
             </div>
           </button>

@@ -72,8 +72,16 @@ service cloud.firestore {
       allow read, write: if isValidId(mcqId);
     }
 
+    match /englishTyping/{typingId} {
+      allow read, write: if isValidId(typingId);
+    }
+
     match /englishProgress/{progressId} {
       allow read, write: if isValidId(progressId);
+    }
+
+    match /homeCustomModules/{moduleId} {
+      allow read, write: if isValidId(moduleId);
     }
 
     // User attempts and scores

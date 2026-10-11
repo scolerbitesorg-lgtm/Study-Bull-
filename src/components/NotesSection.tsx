@@ -166,7 +166,7 @@ export const NotesSection: React.FC<NotesSectionProps> = ({
                 {language === 'hi' ? subject.nameHi : subject.name}
               </span>
               <span className="block text-[11px] text-slate-500 font-medium mt-0.5">
-                {subject.topicCount} {language === 'hi' ? 'अध्याय' : 'Topics'}
+                {(TOPICS[subject.id] || []).length || 2} {language === 'hi' ? 'अध्याय (Chapter PDF)' : 'Topics'}
               </span>
             </div>
           </button>

@@ -600,6 +600,7 @@ export const MockSection: React.FC<MockSectionProps> = ({
             exam={exam}
             onClick={handleSelectExam}
             soundEnabled={soundEnabled}
+            testCount={mockTests.filter((t) => t.examId === exam.id).length}
           />
         ))}
       </div>
