@@ -1,6 +1,6 @@
 import React from 'react';
 import { MainSection, Language } from '../types';
-import { Volume2, VolumeX, ArrowLeft, Home } from 'lucide-react';
+import { Volume2, VolumeX, ArrowLeft, Home, Settings } from 'lucide-react';
 import { Logo } from './Logo';
 import { playTapSound } from '../utils/audio';
 
@@ -13,6 +13,7 @@ interface HeaderProps {
   onToggleLanguage: () => void;
   soundEnabled: boolean;
   onToggleSound: () => void;
+  onOpenAdmin?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -24,6 +25,7 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleLanguage,
   soundEnabled,
   onToggleSound,
+  onOpenAdmin,
 }) => {
   const getSectionTitle = () => {
     if (currentSection === 'quiz') return language === 'hi' ? 'Quiz (अभ्यास)' : 'Quiz Practice';

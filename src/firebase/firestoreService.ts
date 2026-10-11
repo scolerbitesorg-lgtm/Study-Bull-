@@ -44,6 +44,7 @@ import {
   DEFAULT_ENGLISH_GRAMMAR,
   DEFAULT_ENGLISH_STORIES,
 } from '../data/englishData';
+import { StorageService } from '../services/storageService';
 
 enum OperationType {
   CREATE = 'create',
@@ -347,10 +348,18 @@ export const FirestoreService = {
       if (gramSnap.empty) await this.seedEnglishGrammar();
       if (storiesSnap.empty) await this.seedEnglishStories();
 
-      // Check and seed default home custom modules & buttons if none exist
+      // Check and seed default home custom modules & buttons, and clean up any non-default items created by admin panel
       const homeCustomSnap = await getDocs(collection(db, 'homeCustomModules'));
+      const defaultIds = new Set(DEFAULT_HOME_BUTTONS.map((b) => b.id));
       if (homeCustomSnap.empty) {
         await this.seedHomeCustomModules();
+      } else {
+        // Delete any non-default custom modules created from external admin panel
+        for (const snapDoc of homeCustomSnap.docs) {
+          if (!defaultIds.has(snapDoc.id)) {
+            await deleteDoc(doc(db, 'homeCustomModules', snapDoc.id));
+          }
+        }
       }
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, 'defaultData');
@@ -844,6 +853,16 @@ export const FirestoreService = {
     }
   },
 
+  async resetAllEnglishDataInFirebase() {
+    try {
+      await this.resetCleanEnglishMcq();
+      return true;
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, 'englishDataReset');
+      return false;
+    }
+  },
+
   async saveEnglishTypingSentence(item: EnglishSentenceTypingItem) {
     await setDoc(doc(db, 'englishTyping', item.id), item);
   },
@@ -893,5 +912,47 @@ export const FirestoreService = {
   },
   async deleteHomeCustomModule(id: string) {
     await deleteDoc(doc(db, 'homeCustomModules', id));
+  },
+
+  async clearCollection(colName: string) {
+    try {
+      const snap = await getDocs(collection(db, colName));
+      for (const docSnap of snap.docs) {
+        await deleteDoc(doc(db, colName, docSnap.id));
+      }
+    } catch (e) {
+      handleFirestoreError(e, OperationType.DELETE, colName);
+    }
+  },
+
+  async resetAllFirestoreDataToOriginalDefaults() {
+    try {
+      const collectionsToClear = [
+        'homeCustomModules',
+        'categories',
+        'subjects',
+        'topics',
+        'questions',
+        'mockTests',
+        'notes',
+        'typingPassages',
+        'englishVocab',
+        'englishSentences',
+        'englishSpelling',
+        'englishMcq',
+        'englishTyping',
+        'englishGrammar',
+        'englishStories',
+      ];
+      for (const col of collectionsToClear) {
+        await this.clearCollection(col);
+      }
+      await this.uploadAllAppDataToFirestore();
+      StorageService.clearAllCaches();
+      return true;
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, 'resetDefaults');
+      return false;
+    }
   },
 };

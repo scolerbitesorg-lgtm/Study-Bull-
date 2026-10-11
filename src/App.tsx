@@ -59,8 +59,15 @@ export default function App() {
         return;
       }
 
-      // Admin panel direct link if URL hash is #/admin or #admin
-      if (hash === '#/admin' || hash === '#admin') {
+      // Admin panel direct link if URL hash is #/admin, #admin, #/secret-admin, #secret-admin, etc.
+      if (
+        hash === '#/admin' ||
+        hash === '#admin' ||
+        hash === '#/secret-admin' ||
+        hash === '#secret-admin' ||
+        hash === '#/admin-panel' ||
+        hash === '#admin-panel'
+      ) {
         setIsAdminModalOpen(true);
         return;
       }

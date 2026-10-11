@@ -263,17 +263,17 @@ export const StorageService = {
     quizTotal: number;
   } {
     const trueDefaults = {
-      mcq: 25,
-      spelling: 25,
-      sentences: 25,
-      vocab: 25,
-      typing: 25,
-      grammar: 12,
-      stories: 8,
+      mcq: 10,
+      spelling: 10,
+      sentences: 10,
+      vocab: 10,
+      typing: 10,
+      grammar: 5,
+      stories: 5,
       mock: 5,
       notes: 8,
-      passages: 7,
-      quizTotal: 20,
+      passages: 3,
+      quizTotal: 17,
     };
     try {
       const data = localStorage.getItem('studybull_cached_counts');
@@ -314,6 +314,18 @@ export const StorageService = {
   saveCachedData<T>(key: string, data: T): void {
     try {
       localStorage.setItem(`studybull_cached_${key}`, JSON.stringify(data));
+    } catch {
+      // ignore
+    }
+  },
+
+  clearAllCaches(): void {
+    try {
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith('studybull_cached_')) {
+          localStorage.removeItem(key);
+        }
+      });
     } catch {
       // ignore
     }

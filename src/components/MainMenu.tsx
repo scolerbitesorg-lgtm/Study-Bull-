@@ -49,8 +49,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({
     };
 
     const unsubscribeCustom = FirestoreService.subscribeHomeCustomModules((modules) => {
-      if (modules && modules.length > 0) {
-        setCustomModules(modules);
+      setCustomModules(modules || []);
+      if (modules) {
         StorageService.saveCachedHomeCustomModules(modules);
       }
     });

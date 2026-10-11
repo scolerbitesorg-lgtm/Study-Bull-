@@ -92,17 +92,14 @@ export const HomeButtonsAdminModal: React.FC<HomeButtonsAdminModalProps> = ({
   React.useEffect(() => {
     if (!isOpen) return;
     const unsub = FirestoreService.subscribeHomeCustomModules((list) => {
-      const existingIds = new Set(list.map((m) => m.id));
-      const missingDefaults = DEFAULT_HOME_BUTTONS.filter((d) => !existingIds.has(d.id));
-      const combined = [...list, ...missingDefaults].sort((a, b) => a.order - b.order);
-      setCustomModulesList(combined);
-      if (selectedModule) {
-        const updated = combined.find((m) => m.id === selectedModule.id);
-        if (updated) setSelectedModule(updated);
-      }
+      setCustomModulesList(list);
+      setSelectedModule((prev) => {
+        if (!prev) return null;
+        return list.find((m) => m.id === prev.id) || prev;
+      });
     });
     return () => unsub();
-  }, [isOpen, selectedModule]);
+  }, [isOpen]);
 
   const handleUploadAllData = async () => {
     setIsUploadingAll(true);
