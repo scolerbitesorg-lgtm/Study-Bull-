@@ -37,6 +37,24 @@ export const EnglishGrammarView: React.FC<EnglishGrammarViewProps> = ({
   const [quizAnswered, setQuizAnswered] = useState(false);
   const [quizCompleted, setQuizCompleted] = useState(false);
 
+  // Step-by-step navigation sync for mobile back button
+  React.useEffect(() => {
+    const syncFromNavigation = () => {
+      const hash = window.location.hash || '';
+      if (!hash.match(/#\/english\/grammar\/.+/)) {
+        setSelectedTopic(null);
+      }
+    };
+
+    window.addEventListener('popstate', syncFromNavigation);
+    window.addEventListener('hashchange', syncFromNavigation);
+
+    return () => {
+      window.removeEventListener('popstate', syncFromNavigation);
+      window.removeEventListener('hashchange', syncFromNavigation);
+    };
+  }, []);
+
   const handleSelectTopic = (topic: EnglishGrammarTopic) => {
     playTapSound(soundEnabled);
     setSelectedTopic(topic);
@@ -44,6 +62,11 @@ export const EnglishGrammarView: React.FC<EnglishGrammarViewProps> = ({
     setSelectedOpt(null);
     setQuizAnswered(false);
     setQuizCompleted(false);
+    window.history.pushState(
+      { section: 'english', englishSubModule: 'grammar', topicId: topic.id },
+      '',
+      `#/english/grammar/${topic.id}`
+    );
   };
 
   const handleQuizAnswer = (idx: number) => {
@@ -155,6 +178,20 @@ export const EnglishGrammarView: React.FC<EnglishGrammarViewProps> = ({
       ) : (
         /* SELECTED TOPIC DETAIL VIEW */
         <div className="space-y-4 animate-in fade-in">
+          {/* Back to Topics Button */}
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => {
+                playTapSound(soundEnabled);
+                window.history.back();
+              }}
+              className="flex items-center gap-1.5 py-1 px-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 active:scale-95 transition-all shadow-2xs cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>{language === 'hi' ? 'व्याकरण टॉपिक्स' : 'Grammar Topics'}</span>
+            </button>
+          </div>
+
           {/* Topic Header Card */}
           <div className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-xs space-y-2">
             <div className="flex items-center gap-2">

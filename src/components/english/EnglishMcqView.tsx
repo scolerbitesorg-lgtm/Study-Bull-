@@ -88,6 +88,25 @@ export const EnglishMcqView: React.FC<EnglishMcqViewProps> = ({
     return [...shuffledUnseen, ...shuffledSeen];
   };
 
+  // Step-by-step navigation sync for mobile back button
+  useEffect(() => {
+    const syncFromNavigation = () => {
+      const hash = window.location.hash || '';
+      if (!hash.includes('/mcq/practice')) {
+        setIsPracticeActive(false);
+        setIsCompleted(false);
+      }
+    };
+
+    window.addEventListener('popstate', syncFromNavigation);
+    window.addEventListener('hashchange', syncFromNavigation);
+
+    return () => {
+      window.removeEventListener('popstate', syncFromNavigation);
+      window.removeEventListener('hashchange', syncFromNavigation);
+    };
+  }, []);
+
   const handleStartTest = (level: EnglishProficiencyLevel | 'all') => {
     playTapSound(soundEnabled);
     setSelectedTopic(level);
@@ -106,6 +125,7 @@ export const EnglishMcqView: React.FC<EnglishMcqViewProps> = ({
     setSessionWrong(0);
     setIsCompleted(false);
     setIsPracticeActive(true);
+    window.history.pushState({ section: 'english', englishSubModule: 'mcq', practice: true }, '', '#/english/mcq/practice');
   };
 
   const currentQ: EnglishMcqItem | undefined =
@@ -412,7 +432,7 @@ export const EnglishMcqView: React.FC<EnglishMcqViewProps> = ({
           <button
             onClick={() => {
               playTapSound(soundEnabled);
-              setIsPracticeActive(false);
+              window.history.back();
             }}
             type="button"
             className="flex items-center gap-1.5 py-1 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer"

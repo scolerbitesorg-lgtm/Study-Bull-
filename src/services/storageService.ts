@@ -225,5 +225,90 @@ export const StorageService = {
     } catch {
       // ignore
     }
+  },
+
+  getCachedHomeCustomModules(): import('../types').HomeCustomModule[] {
+    try {
+      const data = localStorage.getItem('studybull_cached_custom_modules');
+      if (data) {
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {
+      // ignore
+    }
+    return [];
+  },
+
+  saveCachedHomeCustomModules(modules: import('../types').HomeCustomModule[]): void {
+    try {
+      localStorage.setItem('studybull_cached_custom_modules', JSON.stringify(modules));
+    } catch {
+      // ignore
+    }
+  },
+
+  getCachedCounts(): {
+    mcq: number;
+    spelling: number;
+    sentences: number;
+    vocab: number;
+    typing: number;
+    grammar: number;
+    stories: number;
+    mock: number;
+    notes: number;
+    passages: number;
+    quizTotal: number;
+  } {
+    try {
+      const data = localStorage.getItem('studybull_cached_counts');
+      if (data) {
+        return JSON.parse(data);
+      }
+    } catch {
+      // ignore
+    }
+    return {
+      mcq: 25,
+      spelling: 25,
+      sentences: 25,
+      vocab: 25,
+      typing: 25,
+      grammar: 12,
+      stories: 8,
+      mock: 5,
+      notes: 12,
+      passages: 25,
+      quizTotal: 850,
+    };
+  },
+
+  saveCachedCounts(counts: any): void {
+    try {
+      localStorage.setItem('studybull_cached_counts', JSON.stringify(counts));
+    } catch {
+      // ignore
+    }
+  },
+
+  getCachedData<T>(key: string, fallback: T): T {
+    try {
+      const data = localStorage.getItem(`studybull_cached_${key}`);
+      if (data) {
+        return JSON.parse(data);
+      }
+    } catch {
+      // ignore
+    }
+    return fallback;
+  },
+
+  saveCachedData<T>(key: string, data: T): void {
+    try {
+      localStorage.setItem(`studybull_cached_${key}`, JSON.stringify(data));
+    } catch {
+      // ignore
+    }
   }
 };

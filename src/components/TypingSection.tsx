@@ -61,6 +61,20 @@ const EXTRA_SPEED_DRILLS: TypingPassage[] = [
   },
 ];
 
+const dedupePassages = (list: TypingPassage[]): TypingPassage[] => {
+  const seen = new Set<string>();
+  const out: TypingPassage[] = [];
+  for (let i = 0; i < list.length; i++) {
+    const item = list[i];
+    const id = item.id || `passage_${i}`;
+    if (!seen.has(id)) {
+      seen.add(id);
+      out.push({ ...item, id });
+    }
+  }
+  return out;
+};
+
 interface TypingSectionProps {
   language: Language;
   soundEnabled: boolean;
@@ -72,15 +86,18 @@ export const TypingSection: React.FC<TypingSectionProps> = ({
   soundEnabled,
   onNavigateHome,
 }) => {
-  const [passages, setPassages] = useState<TypingPassage[]>(() => [...TYPING_PASSAGES, ...EXTRA_SPEED_DRILLS]);
-  const [selectedPassage, setSelectedPassage] = useState<TypingPassage>(TYPING_PASSAGES[0]);
+  const [passages, setPassages] = useState<TypingPassage[]>(() =>
+    dedupePassages([...TYPING_PASSAGES, ...EXTRA_SPEED_DRILLS])
+  );
+  const [selectedPassage, setSelectedPassage] = useState<TypingPassage>(() => passages[0] || TYPING_PASSAGES[0]);
 
   // Subscribe to real-time Firestore updates for typing passages
   useEffect(() => {
     const unsub = FirestoreService.subscribeTypingPassages((list) => {
       if (list && list.length > 0) {
-        setPassages([...list, ...EXTRA_SPEED_DRILLS]);
-        setSelectedPassage(list[0]);
+        const combined = dedupePassages([...list, ...EXTRA_SPEED_DRILLS]);
+        setPassages(combined);
+        setSelectedPassage((prev) => combined.find((p) => p.id === prev.id) || combined[0]);
       }
     });
     return () => unsub();
@@ -100,13 +117,28 @@ export const TypingSection: React.FC<TypingSectionProps> = ({
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
+  // Sync mobile hardware & gesture back button with typing states
   useEffect(() => {
-    const unsub = FirestoreService.subscribeTypingPassages((data) => {
-      if (data && data.length > 0) {
-        setPassages([...data, ...EXTRA_SPEED_DRILLS]);
+    const syncFromNavigation = () => {
+      const hash = window.location.hash || '';
+      const state = window.history.state || {};
+      if (hash.startsWith('#/typing') || state.section === 'typing') {
+        if (!hash.includes('/test') && !hash.includes('/result')) {
+          if (timerRef.current) clearInterval(timerRef.current);
+          setIsTestActive(false);
+          setResult(null);
+        }
       }
-    });
-    return () => unsub();
+    };
+
+    window.addEventListener('popstate', syncFromNavigation);
+    window.addEventListener('hashchange', syncFromNavigation);
+    syncFromNavigation();
+
+    return () => {
+      window.removeEventListener('popstate', syncFromNavigation);
+      window.removeEventListener('hashchange', syncFromNavigation);
+    };
   }, []);
 
   // Timer countdown
@@ -147,6 +179,7 @@ export const TypingSection: React.FC<TypingSectionProps> = ({
     setStartTime(Date.now());
     setIsTestActive(true);
     setResult(null);
+    window.history.pushState({ section: 'typing', typingScreen: 'test' }, '', '#/typing/test');
 
     setTimeout(() => {
       inputRef.current?.focus();
@@ -195,6 +228,7 @@ export const TypingSection: React.FC<TypingSectionProps> = ({
       timeSpentSeconds,
       passedSscCriteria,
     });
+    window.history.pushState({ section: 'typing', typingScreen: 'result' }, '', '#/typing/result');
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -560,9 +594,9 @@ export const TypingSection: React.FC<TypingSectionProps> = ({
           </span>
 
           <div className="space-y-2.5">
-            {filteredPassages.map((p) => (
+            {filteredPassages.map((p, pIdx) => (
               <button
-                key={p.id}
+                key={`passage_${p.id || pIdx}_${pIdx}`}
                 onClick={() => handleStartTest(p)}
                 type="button"
                 className="relative w-full p-4 bg-white rounded-2xl border border-slate-200/90 shadow-xs hover:border-blue-300 active:scale-95 active:bg-blue-50/60 active:border-blue-400 active:shadow-inner transition-all duration-150 cursor-pointer flex items-center justify-between text-left group select-none"

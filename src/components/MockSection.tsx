@@ -32,22 +32,84 @@ export const MockSection: React.FC<MockSectionProps> = ({
   preselectedExamId,
   onNavigateHome,
 }) => {
-  const [categories, setCategories] = useState<ExamCategory[]>(EXAM_CATEGORIES);
-  const [mockTests, setMockTests] = useState<MockTest[]>(MOCK_TESTS);
+  const [categories, setCategories] = useState<ExamCategory[]>(() =>
+    StorageService.getCachedData('categories', EXAM_CATEGORIES)
+  );
+  const [mockTests, setMockTests] = useState<MockTest[]>(() =>
+    StorageService.getCachedData('mockTests', MOCK_TESTS)
+  );
 
   // Subscribe to real-time updates from Firebase Firestore
   useEffect(() => {
     const unsubCats = FirestoreService.subscribeCategories((list) => {
-      if (list && list.length > 0) setCategories(list);
+      if (list && list.length > 0) {
+        setCategories(list);
+        StorageService.saveCachedData('categories', list);
+      }
     });
     const unsubTests = FirestoreService.subscribeMockTests((list) => {
-      if (list && list.length > 0) setMockTests(list);
+      if (list && list.length > 0) {
+        setMockTests(list);
+        StorageService.saveCachedData('mockTests', list);
+      }
     });
     return () => {
       unsubCats();
       unsubTests();
     };
   }, []);
+
+  // Step-by-step mobile hardware and gesture back button handler (Hash & Popstate synced)
+  useEffect(() => {
+    const syncFromNavigation = () => {
+      const hash = window.location.hash || '';
+      const state = window.history.state || {};
+
+      if (hash.startsWith('#/mock') || state.section === 'mock') {
+        const parts = hash.replace(/^#\/?/, '').split('/');
+        // parts[0] is 'mock', parts[1] is examId, parts[2] is testId, parts[3] is 'result'
+        const exId = parts[1] || state.mockExamId;
+        const tId = parts[2] || state.mockTestId;
+        const isResult = parts[3] === 'result' || !!state.mockDone;
+
+        // If drawer or confirmation is open, back closes them first
+        setIsPaletteOpen(false);
+        setShowSubmitConfirm(false);
+
+        if (!isResult) {
+          setCompletedAttempt(null);
+        }
+
+        if (tId) {
+          // Inside Active Test
+          const ex = categories.find((e) => e.id === exId) || EXAM_CATEGORIES.find((e) => e.id === exId) || null;
+          if (ex) setSelectedExam(ex);
+          const foundTest = mockTests.find((t: MockTest) => t.id === tId) || null;
+          setActiveTest(foundTest);
+        } else if (exId) {
+          // Stepped back from active test -> now in Test Series list!
+          setActiveTest(null);
+          setCompletedAttempt(null);
+          const ex = categories.find((e) => e.id === exId) || EXAM_CATEGORIES.find((e) => e.id === exId) || null;
+          setSelectedExam(ex);
+        } else {
+          // Root Exam Categories list
+          setActiveTest(null);
+          setSelectedExam(null);
+          setCompletedAttempt(null);
+        }
+      }
+    };
+
+    window.addEventListener('popstate', syncFromNavigation);
+    window.addEventListener('hashchange', syncFromNavigation);
+    syncFromNavigation();
+
+    return () => {
+      window.removeEventListener('popstate', syncFromNavigation);
+      window.removeEventListener('hashchange', syncFromNavigation);
+    };
+  }, [mockTests, categories]);
 
   const [selectedExam, setSelectedExam] = useState<ExamCategory | null>(() => {
     if (preselectedExamId) {
@@ -95,6 +157,7 @@ export const MockSection: React.FC<MockSectionProps> = ({
     }
     setSelectedExam(exam);
     setActiveTest(null);
+    window.history.pushState({ section: 'mock', mockExamId: exam.id }, '', `#/mock/${exam.id}`);
   };
 
   const handleStartTest = (test: MockTest) => {
@@ -113,6 +176,13 @@ export const MockSection: React.FC<MockSectionProps> = ({
     setTestStartTime(Date.now());
     setCompletedAttempt(null);
     setShowSubmitConfirm(false);
+
+    const exId = selectedExam?.id || test.examId;
+    window.history.pushState(
+      { section: 'mock', mockExamId: exId, mockTestId: test.id },
+      '',
+      `#/mock/${exId}/${test.id}`
+    );
   };
 
   const handleOptionSelect = (optionIndex: number) => {
@@ -231,6 +301,12 @@ export const MockSection: React.FC<MockSectionProps> = ({
     StorageService.saveMockAttempt(attempt);
     setCompletedAttempt(attempt);
     setShowSubmitConfirm(false);
+    const exId = selectedExam?.id || activeTest.examId;
+    window.history.pushState(
+      { section: 'mock', mockExamId: exId, mockTestId: activeTest.id, mockDone: true },
+      '',
+      `#/mock/${exId}/${activeTest.id}/result`
+    );
   };
 
   // Helper format time
@@ -249,8 +325,8 @@ export const MockSection: React.FC<MockSectionProps> = ({
         language={language}
         onRetry={() => handleStartTest(activeTest)}
         onBackToSeries={() => {
-          setActiveTest(null);
-          setCompletedAttempt(null);
+          playTapSound(soundEnabled);
+          window.history.back();
         }}
       />
     );
@@ -508,7 +584,7 @@ export const MockSection: React.FC<MockSectionProps> = ({
           <button
             onClick={() => {
               playTapSound(soundEnabled);
-              setSelectedExam(null);
+              window.history.back();
             }}
             className="p-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 active:scale-95 transition-all shadow-2xs cursor-pointer"
           >

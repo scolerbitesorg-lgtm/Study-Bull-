@@ -3,6 +3,7 @@ import { Subject, Topic, NoteItem, Language } from '../types';
 import { SUBJECTS, TOPICS, PDF_NOTES_LIBRARY } from '../data/mockData';
 import { FirestoreService } from '../firebase/firestoreService';
 import { PdfReaderModal } from './PdfReaderModal';
+import { StorageService } from '../services/storageService';
 import { playTapSound } from '../utils/audio';
 import { ArrowLeft, FileText, ChevronRight } from 'lucide-react';
 
@@ -17,17 +18,27 @@ export const NotesSection: React.FC<NotesSectionProps> = ({
   soundEnabled,
   onNavigateHome,
 }) => {
-  const [subjects, setSubjects] = useState<Subject[]>(SUBJECTS);
-  const [notesList, setNotesList] = useState<NoteItem[]>(PDF_NOTES_LIBRARY);
+  const [subjects, setSubjects] = useState<Subject[]>(() =>
+    StorageService.getCachedData('notes_subjects', SUBJECTS)
+  );
+  const [notesList, setNotesList] = useState<NoteItem[]>(() =>
+    StorageService.getCachedData('notes_list', PDF_NOTES_LIBRARY)
+  );
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
   const [activePdfNote, setActivePdfNote] = useState<NoteItem | null>(null);
 
   useEffect(() => {
     const unsubSubs = FirestoreService.subscribeSubjects((list) => {
-      if (list && list.length > 0) setSubjects(list);
+      if (list && list.length > 0) {
+        setSubjects(list);
+        StorageService.saveCachedData('notes_subjects', list);
+      }
     });
     const unsubNotes = FirestoreService.subscribeNotes((list) => {
-      if (list && list.length > 0) setNotesList(list);
+      if (list && list.length > 0) {
+        setNotesList(list);
+        StorageService.saveCachedData('notes_list', list);
+      }
     });
     return () => {
       unsubSubs();
@@ -35,9 +46,61 @@ export const NotesSection: React.FC<NotesSectionProps> = ({
     };
   }, []);
 
+  // Step-by-step mobile hardware and gesture back button handler (Hash & Popstate synced)
+  useEffect(() => {
+    const syncFromNavigation = () => {
+      const hash = window.location.hash || '';
+      const state = window.history.state || {};
+
+      if (hash.startsWith('#/notes') || state.section === 'notes') {
+        const parts = hash.replace(/^#\/?/, '').split('/');
+        // parts[0] is 'notes', parts[1] is subjectId, parts[2] is topicId
+        const subjId = parts[1] || state.notesSubjectId;
+        const topId = parts[2] || state.notesTopicId;
+
+        if (topId) {
+          // Inside PDF note
+          const subj = subjects.find((s) => s.id === subjId) || SUBJECTS.find((s) => s.id === subjId) || null;
+          if (subj) setSelectedSubject(subj);
+          const subjectNote = notesList.find((n) => n.subjectId === subjId) || notesList[0] || PDF_NOTES_LIBRARY[0];
+          const topicList: Topic[] = (subjId && TOPICS[subjId]) || [];
+          const topic = topicList.find((t) => t.id === topId);
+          if (topic) {
+            setActivePdfNote({
+              ...subjectNote,
+              id: `note_${topic.id}`,
+              title: `${language === 'hi' ? topic.nameHi : topic.name} [PDF Revision Notes]`,
+              downloadFilename: `${topic.name.replace(/[^a-zA-Z0-9]/g, '_')}_Notes.pdf`,
+            });
+          }
+        } else if (subjId) {
+          // Stepped back from PDF note -> now in topic notes of this subject!
+          setActivePdfNote(null);
+          const subj = subjects.find((s) => s.id === subjId) || SUBJECTS.find((s) => s.id === subjId) || null;
+          setSelectedSubject(subj);
+        } else {
+          // Subject folders root
+          setActivePdfNote(null);
+          setSelectedSubject(null);
+        }
+      }
+    };
+
+    window.addEventListener('popstate', syncFromNavigation);
+    window.addEventListener('hashchange', syncFromNavigation);
+    syncFromNavigation();
+
+    return () => {
+      window.removeEventListener('popstate', syncFromNavigation);
+      window.removeEventListener('hashchange', syncFromNavigation);
+    };
+  }, [subjects, notesList, language]);
+
   const handleSelectSubject = (subject: Subject) => {
     playTapSound(soundEnabled);
     setSelectedSubject(subject);
+    setActivePdfNote(null);
+    window.history.pushState({ section: 'notes', notesSubjectId: subject.id }, '', `#/notes/${subject.id}`);
   };
 
   const handleOpenTopicNote = (topic: Topic) => {
@@ -53,6 +116,12 @@ export const NotesSection: React.FC<NotesSectionProps> = ({
       downloadFilename: `${topic.name.replace(/[^a-zA-Z0-9]/g, '_')}_Notes.pdf`,
     };
     setActivePdfNote(topicNote);
+    const subjId = selectedSubject?.id || topic.subjectId;
+    window.history.pushState(
+      { section: 'notes', notesSubjectId: subjId, notesTopicId: topic.id },
+      '',
+      `#/notes/${subjId}/${topic.id}`
+    );
   };
 
   // STEP 2: INSIDE SUBJECT FOLDER -> SHOW TOPICS
@@ -69,7 +138,7 @@ export const NotesSection: React.FC<NotesSectionProps> = ({
           <button
             onClick={() => {
               playTapSound(soundEnabled);
-              setSelectedSubject(null);
+              window.history.back();
             }}
             className="p-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 active:scale-95 transition-all cursor-pointer shadow-xs"
           >
@@ -120,7 +189,10 @@ export const NotesSection: React.FC<NotesSectionProps> = ({
           <PdfReaderModal
             note={activePdfNote}
             isOpen={!!activePdfNote}
-            onClose={() => setActivePdfNote(null)}
+            onClose={() => {
+              playTapSound(soundEnabled);
+              window.history.back();
+            }}
             language={language}
             soundEnabled={soundEnabled}
           />

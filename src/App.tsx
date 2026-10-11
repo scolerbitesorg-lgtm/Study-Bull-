@@ -24,35 +24,107 @@ export default function App() {
     FirestoreService.ensureDefaultFirestoreData();
   }, []);
 
-  // Browser history sync so back button only navigates one screen back, never exiting the web
+  // Hash & Popstate router for mobile hardware back button support
   useEffect(() => {
+    // Initial replaceState if not set
     if (!window.history.state) {
-      window.history.replaceState({ section: 'menu', englishSubModule: 'overview', calcScreen: 'setup' }, '');
+      window.history.replaceState({ section: 'menu' }, '', window.location.hash || '#/');
     }
 
-    const handlePopState = (event: PopStateEvent) => {
-      if (event.state) {
-        const state = event.state;
-        setCurrentSection(state.section || 'menu');
-        setEnglishSubModule(state.englishSubModule || 'overview');
-        setCalcScreen(state.calcScreen || 'setup');
-      } else {
+    const syncNavigation = (e?: Event) => {
+      const hash = window.location.hash || '#/';
+      const popState = e && 'state' in e ? (e as PopStateEvent).state : null;
+      const state = popState || window.history.state || {};
+
+      // If at root menu:
+      if (hash === '#/' || hash === '' || hash === '#') {
         setCurrentSection('menu');
+        setSelectedCustomModule(null);
         setEnglishSubModule('overview');
         setCalcScreen('setup');
+        return;
+      }
+
+      // Quiz section
+      if (hash.startsWith('#/quiz')) {
+        setCurrentSection('quiz');
+        return;
+      }
+
+      // Mock section
+      if (hash.startsWith('#/mock')) {
+        setCurrentSection('mock');
+        return;
+      }
+
+      // Notes section
+      if (hash.startsWith('#/notes')) {
+        setCurrentSection('notes');
+        return;
+      }
+
+      // Typing section
+      if (hash.startsWith('#/typing')) {
+        setCurrentSection('typing');
+        return;
+      }
+
+      // Calculations section
+      if (hash.startsWith('#/calculations')) {
+        setCurrentSection('calculations');
+        if (hash.includes('/practice')) setCalcScreen('practice');
+        else if (hash.includes('/result')) setCalcScreen('result');
+        else setCalcScreen('setup');
+        return;
+      }
+
+      // English section
+      if (hash.startsWith('#/english')) {
+        setCurrentSection('english');
+        const parts = hash.replace(/^#\/?/, '').split('/');
+        const sub = (parts[1] as EnglishSubModule) || 'overview';
+        setEnglishSubModule(sub);
+        return;
+      }
+
+      // Custom feature
+      if (hash.startsWith('#/custom')) {
+        setCurrentSection('custom_feature');
+        const parts = hash.replace(/^#\/?/, '').split('/');
+        const modId = parts[1];
+        if (modId) {
+          const cached = StorageService.getCachedData<HomeCustomModule[]>('homeCustomModules', []);
+          const found = cached.find((m) => m.id === modId);
+          if (found) setSelectedCustomModule(found);
+        }
+        return;
+      }
+
+      // Fallback
+      if (state.section) {
+        setCurrentSection(state.section);
+      } else {
+        setCurrentSection('menu');
       }
     };
 
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+    window.addEventListener('popstate', syncNavigation);
+    window.addEventListener('hashchange', syncNavigation);
+    syncNavigation();
+
+    return () => {
+      window.removeEventListener('popstate', syncNavigation);
+      window.removeEventListener('hashchange', syncNavigation);
+    };
+  }, [currentSection]);
 
   const navigateToSection = (section: MainSection) => {
     setCurrentSection(section);
     setSelectedCustomModule(null);
     setEnglishSubModule('overview');
     setCalcScreen('setup');
-    window.history.pushState({ section, englishSubModule: 'overview', calcScreen: 'setup' }, '');
+    const targetHash = section === 'menu' ? '#/' : ` #/${section}`.trim();
+    window.history.pushState({ section }, '', targetHash);
   };
 
   const navigateToCustomModule = (mod: HomeCustomModule) => {
@@ -60,21 +132,23 @@ export default function App() {
     setCurrentSection('custom_feature');
     setEnglishSubModule('overview');
     setCalcScreen('setup');
-    window.history.pushState({ section: 'custom_feature', englishSubModule: 'overview', calcScreen: 'setup' }, '');
+    window.history.pushState({ section: 'custom_feature', moduleId: mod.id }, '', `#/custom/${mod.id}`);
   };
 
   const navigateEnglishSubModule = (subMod: EnglishSubModule) => {
     setEnglishSubModule(subMod);
-    window.history.pushState({ section: 'english', englishSubModule: subMod, calcScreen: 'setup' }, '');
+    const targetHash = subMod === 'overview' ? '#/english' : `#/english/${subMod}`;
+    window.history.pushState({ section: 'english', englishSubModule: subMod }, '', targetHash);
   };
 
   const navigateCalcScreen = (cScreen: 'setup' | 'practice' | 'result') => {
     setCalcScreen(cScreen);
-    window.history.pushState({ section: 'calculations', englishSubModule: 'overview', calcScreen: cScreen }, '');
+    const targetHash = cScreen === 'setup' ? '#/calculations' : `#/calculations/${cScreen}`;
+    window.history.pushState({ section: 'calculations', calcScreen: cScreen }, '', targetHash);
   };
 
   const handleStepBack = () => {
-    if (window.history.state && (currentSection !== 'menu' || englishSubModule !== 'overview' || calcScreen !== 'setup')) {
+    if (currentSection !== 'menu' || window.location.hash !== '#/') {
       window.history.back();
     } else {
       navigateToSection('menu');
@@ -82,20 +156,44 @@ export default function App() {
   };
 
   const getBackLabel = () => {
+    const hash = window.location.hash || '';
+    const isHi = settings.language === 'hi';
+
     if (currentSection === 'custom_feature') {
-      return settings.language === 'hi' ? 'मेन्यू' : 'Menu';
+      return isHi ? 'मेन्यू' : 'Menu';
     }
-    if (currentSection === 'english') {
-      return englishSubModule !== 'overview'
-        ? (settings.language === 'hi' ? 'ओवरव्यू' : 'Overview')
-        : (settings.language === 'hi' ? 'मेन्यू' : 'Menu');
+    if (currentSection === 'quiz') {
+      const parts = hash.replace(/^#\/?/, '').split('/');
+      if (parts.length >= 3) return isHi ? 'टॉपिक्स' : 'Topics';
+      if (parts.length === 2 && parts[1]) return isHi ? 'विषय' : 'Subjects';
+      return isHi ? 'मेन्यू' : 'Menu';
+    }
+    if (currentSection === 'mock') {
+      const parts = hash.replace(/^#\/?/, '').split('/');
+      if (parts.length >= 3) return isHi ? 'सीरीज' : 'Series';
+      if (parts.length === 2 && parts[1]) return isHi ? 'परीक्षाएं' : 'Exams';
+      return isHi ? 'मेन्यू' : 'Menu';
+    }
+    if (currentSection === 'notes') {
+      const parts = hash.replace(/^#\/?/, '').split('/');
+      if (parts.length >= 3) return isHi ? 'टॉपिक्स' : 'Topics';
+      if (parts.length === 2 && parts[1]) return isHi ? 'फोल्डर्स' : 'Folders';
+      return isHi ? 'मेन्यू' : 'Menu';
+    }
+    if (currentSection === 'typing') {
+      if (hash.includes('/test') || hash.includes('/result')) {
+        return isHi ? 'पैसेज' : 'Passages';
+      }
+      return isHi ? 'मेन्यू' : 'Menu';
     }
     if (currentSection === 'calculations') {
-      return calcScreen !== 'setup'
-        ? (settings.language === 'hi' ? 'सेटअप' : 'Setup')
-        : (settings.language === 'hi' ? 'मेन्यू' : 'Menu');
+      return calcScreen !== 'setup' ? (isHi ? 'सेटअप' : 'Setup') : (isHi ? 'मेन्यू' : 'Menu');
     }
-    return settings.language === 'hi' ? 'मेन्यू' : 'Menu';
+    if (currentSection === 'english') {
+      if (hash.includes('/practice')) return isHi ? 'टॉपिक्स' : 'Topics';
+      return englishSubModule !== 'overview' ? (isHi ? 'ओवरव्यू' : 'Overview') : (isHi ? 'मेन्यू' : 'Menu');
+    }
+    return isHi ? 'मेन्यू' : 'Menu';
   };
 
   const toggleLanguage = () => {

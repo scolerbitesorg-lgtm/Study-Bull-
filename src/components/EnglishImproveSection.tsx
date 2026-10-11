@@ -60,14 +60,51 @@ export const EnglishImproveSection: React.FC<EnglishImproveSectionProps> = ({
     setInternalModule(mod);
   };
 
-  // Real-time Firestore loaded states with fallback to initial seed data
-  const [vocabList, setVocabList] = useState<EnglishVocabItem[]>(DEFAULT_ENGLISH_VOCAB);
-  const [sentencesList, setSentencesList] = useState<EnglishSentenceItem[]>(DEFAULT_ENGLISH_SENTENCES);
-  const [spellingList, setSpellingList] = useState<EnglishSpellingItem[]>(DEFAULT_ENGLISH_SPELLING);
-  const [mcqList, setMcqList] = useState<EnglishMcqItem[]>(DEFAULT_ENGLISH_MCQ);
-  const [typingList, setTypingList] = useState<EnglishSentenceTypingItem[]>(DEFAULT_ENGLISH_TYPING);
-  const [grammarList, setGrammarList] = useState<EnglishGrammarTopic[]>(DEFAULT_ENGLISH_GRAMMAR);
-  const [storiesList, setStoriesList] = useState<EnglishStoryItem[]>(DEFAULT_ENGLISH_STORIES);
+  // Sync English sub-modules with URL hash & popstate
+  useEffect(() => {
+    const syncFromNavigation = () => {
+      const hash = window.location.hash || '';
+      if (hash.startsWith('#/english')) {
+        const parts = hash.replace(/^#\/?/, '').split('/');
+        const sub = (parts[1] as EnglishSubModule) || 'overview';
+        if (sub !== currentModule) {
+          if (onSubModuleChange) onSubModuleChange(sub);
+          setInternalModule(sub);
+        }
+      }
+    };
+
+    window.addEventListener('popstate', syncFromNavigation);
+    window.addEventListener('hashchange', syncFromNavigation);
+
+    return () => {
+      window.removeEventListener('popstate', syncFromNavigation);
+      window.removeEventListener('hashchange', syncFromNavigation);
+    };
+  }, [currentModule, onSubModuleChange]);
+
+  // Real-time Firestore loaded states with instant cache-first hydration
+  const [vocabList, setVocabList] = useState<EnglishVocabItem[]>(() =>
+    StorageService.getCachedData('vocab', DEFAULT_ENGLISH_VOCAB)
+  );
+  const [sentencesList, setSentencesList] = useState<EnglishSentenceItem[]>(() =>
+    StorageService.getCachedData('sentences', DEFAULT_ENGLISH_SENTENCES)
+  );
+  const [spellingList, setSpellingList] = useState<EnglishSpellingItem[]>(() =>
+    StorageService.getCachedData('spelling', DEFAULT_ENGLISH_SPELLING)
+  );
+  const [mcqList, setMcqList] = useState<EnglishMcqItem[]>(() =>
+    StorageService.getCachedData('mcq', DEFAULT_ENGLISH_MCQ)
+  );
+  const [typingList, setTypingList] = useState<EnglishSentenceTypingItem[]>(() =>
+    StorageService.getCachedData('typing', DEFAULT_ENGLISH_TYPING)
+  );
+  const [grammarList, setGrammarList] = useState<EnglishGrammarTopic[]>(() =>
+    StorageService.getCachedData('grammar', DEFAULT_ENGLISH_GRAMMAR)
+  );
+  const [storiesList, setStoriesList] = useState<EnglishStoryItem[]>(() =>
+    StorageService.getCachedData('stories', DEFAULT_ENGLISH_STORIES)
+  );
 
   // User persistent progress
   const [progress, setProgress] = useState<UserEnglishProgress>(() =>
@@ -81,15 +118,36 @@ export const EnglishImproveSection: React.FC<EnglishImproveSectionProps> = ({
     return;
   };
 
-  // Subscribe to real-time Firestore updates
+  // Subscribe to real-time Firestore updates and keep cache synced
   useEffect(() => {
-    const unsubVocab = FirestoreService.subscribeEnglishVocab(setVocabList);
-    const unsubSent = FirestoreService.subscribeEnglishSentences(setSentencesList);
-    const unsubSpell = FirestoreService.subscribeEnglishSpelling(setSpellingList);
-    const unsubMcq = FirestoreService.subscribeEnglishMcq(setMcqList);
-    const unsubTyping = FirestoreService.subscribeEnglishTyping(setTypingList);
-    const unsubGrammar = FirestoreService.subscribeEnglishGrammar(setGrammarList);
-    const unsubStories = FirestoreService.subscribeEnglishStories(setStoriesList);
+    const unsubVocab = FirestoreService.subscribeEnglishVocab((list) => {
+      setVocabList(list);
+      StorageService.saveCachedData('vocab', list);
+    });
+    const unsubSent = FirestoreService.subscribeEnglishSentences((list) => {
+      setSentencesList(list);
+      StorageService.saveCachedData('sentences', list);
+    });
+    const unsubSpell = FirestoreService.subscribeEnglishSpelling((list) => {
+      setSpellingList(list);
+      StorageService.saveCachedData('spelling', list);
+    });
+    const unsubMcq = FirestoreService.subscribeEnglishMcq((list) => {
+      setMcqList(list);
+      StorageService.saveCachedData('mcq', list);
+    });
+    const unsubTyping = FirestoreService.subscribeEnglishTyping((list) => {
+      setTypingList(list);
+      StorageService.saveCachedData('typing', list);
+    });
+    const unsubGrammar = FirestoreService.subscribeEnglishGrammar((list) => {
+      setGrammarList(list);
+      StorageService.saveCachedData('grammar', list);
+    });
+    const unsubStories = FirestoreService.subscribeEnglishStories((list) => {
+      setStoriesList(list);
+      StorageService.saveCachedData('stories', list);
+    });
 
     return () => {
       unsubVocab();

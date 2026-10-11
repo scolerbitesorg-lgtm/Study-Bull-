@@ -29,7 +29,9 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
   onNavigateHome,
   preselectedSubjectId,
 }) => {
-  const [subjects, setSubjects] = useState<Subject[]>(SUBJECTS);
+  const [subjects, setSubjects] = useState<Subject[]>(() =>
+    StorageService.getCachedData('subjects', SUBJECTS)
+  );
 
   const getSubjectTotalQuestions = (subjectId: string) => {
     const topics = TOPICS[subjectId] || [];
@@ -41,10 +43,62 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
 
   useEffect(() => {
     const unsub = FirestoreService.subscribeSubjects((list) => {
-      if (list && list.length > 0) setSubjects(list);
+      if (list && list.length > 0) {
+        setSubjects(list);
+        StorageService.saveCachedData('subjects', list);
+      }
     });
     return () => unsub();
   }, []);
+
+  // Step-by-step mobile hardware and gesture back button handler (Hash & Popstate synced)
+  useEffect(() => {
+    const syncFromNavigation = () => {
+      const hash = window.location.hash || '';
+      const state = window.history.state || {};
+
+      if (hash.startsWith('#/quiz') || state.section === 'quiz') {
+        const parts = hash.replace(/^#\/?/, '').split('/');
+        // parts[0] is 'quiz', parts[1] is subjectId, parts[2] is topicId, parts[3] is 'result'
+        const subjId = parts[1] || state.quizSubjectId;
+        const topId = parts[2] || state.quizTopicId;
+        const isResult = parts[3] === 'result' || !!state.quizCompleted;
+
+        if (!isResult) {
+          setCompletedAttempt(null);
+        }
+
+        if (topId) {
+          // Inside Questions / PYQ
+          const subj = subjects.find((s) => s.id === subjId) || SUBJECTS.find((s) => s.id === subjId) || null;
+          if (subj) setSelectedSubject(subj);
+          const topList: Topic[] = (subjId && TOPICS[subjId]) || [];
+          const foundTopic = topList.find((t) => t.id === topId) || null;
+          setSelectedTopic(foundTopic);
+        } else if (subjId) {
+          // Inside Topics list for this subject -> stepped back from PYQ questions!
+          setSelectedTopic(null);
+          setCompletedAttempt(null);
+          const subj = subjects.find((s) => s.id === subjId) || SUBJECTS.find((s) => s.id === subjId) || null;
+          setSelectedSubject(subj);
+        } else {
+          // Root subjects list
+          setSelectedTopic(null);
+          setSelectedSubject(null);
+          setCompletedAttempt(null);
+        }
+      }
+    };
+
+    window.addEventListener('popstate', syncFromNavigation);
+    window.addEventListener('hashchange', syncFromNavigation);
+    syncFromNavigation();
+
+    return () => {
+      window.removeEventListener('popstate', syncFromNavigation);
+      window.removeEventListener('hashchange', syncFromNavigation);
+    };
+  }, [subjects]);
 
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(() => {
     if (preselectedSubjectId) {
@@ -125,6 +179,7 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
     playTapSound(soundEnabled);
     setSelectedSubject(subject);
     setSelectedTopic(null);
+    window.history.pushState({ section: 'quiz', quizSubjectId: subject.id }, '', `#/quiz/${subject.id}`);
   };
 
   const handleStartTopicQuiz = (topic: Topic) => {
@@ -135,6 +190,13 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
     setIsAnswerRevealed({});
     setCompletedAttempt(null);
     setQuizStartTime(Date.now());
+
+    const subjId = selectedSubject?.id || topic.subjectId;
+    window.history.pushState(
+      { section: 'quiz', quizSubjectId: subjId, quizTopicId: topic.id },
+      '',
+      `#/quiz/${subjId}/${topic.id}`
+    );
 
     // Trigger silent background Gemini generation for live fresh questions
     fetchLiveQuizQuestions(topic.subjectId, topic.id);
@@ -212,6 +274,14 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
 
     StorageService.saveQuizAttempt(attempt);
     setCompletedAttempt(attempt);
+    const subjId = selectedSubject?.id || selectedTopic?.subjectId || '';
+    if (selectedTopic) {
+      window.history.pushState(
+        { section: 'quiz', quizSubjectId: subjId, quizTopicId: selectedTopic.id, quizCompleted: true },
+        '',
+        `#/quiz/${subjId}/${selectedTopic.id}/result`
+      );
+    }
   };
 
   // --- STEP 4: ANALYSIS REPORT MODAL ---
@@ -224,8 +294,8 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
         language={language}
         onRetry={() => handleStartTopicQuiz(selectedTopic)}
         onBackToTopics={() => {
-          setSelectedTopic(null);
-          setCompletedAttempt(null);
+          playTapSound(soundEnabled);
+          window.history.back();
         }}
       />
     );
@@ -250,7 +320,7 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
           <button
             onClick={() => {
               playTapSound(soundEnabled);
-              setSelectedTopic(null);
+              window.history.back();
             }}
             className="flex items-center gap-1.5 text-xs font-bold text-slate-700 bg-white border border-slate-200 px-3 py-1.5 rounded-xl hover:bg-slate-50 active:scale-95 transition-all shadow-2xs"
           >
@@ -456,7 +526,7 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
           <button
             onClick={() => {
               playTapSound(soundEnabled);
-              setSelectedSubject(null);
+              window.history.back();
             }}
             className="p-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 active:scale-95 transition-all shadow-2xs cursor-pointer"
           >

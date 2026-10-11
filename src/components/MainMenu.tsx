@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { MainSection, Language, HomeCustomModule } from '../types';
 import { playTapSound } from '../utils/audio';
 import { FirestoreService } from '../firebase/firestoreService';
+import { StorageService } from '../services/storageService';
 import { MOCK_TESTS, PDF_NOTES_LIBRARY, TYPING_PASSAGES, QUESTIONS_DATABASE } from '../data/mockData';
 
 interface MainMenuProps {
@@ -17,49 +18,78 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   language,
   soundEnabled,
 }) => {
-  const [customModules, setCustomModules] = useState<HomeCustomModule[]>([]);
+  // Cache-first initial state: Instant zero-latency render on refresh!
+  const [customModules, setCustomModules] = useState<HomeCustomModule[]>(() =>
+    StorageService.getCachedHomeCustomModules()
+  );
   const [activeNotice, setActiveNotice] = useState<HomeCustomModule | null>(null);
 
-  // Real data counts from Firestore
-  const [counts, setCounts] = useState({
-    mcq: 25,
-    spelling: 25,
-    sentences: 25,
-    vocab: 25,
-    typing: 25,
-    grammar: 12,
-    stories: 8,
-    mock: MOCK_TESTS.length,
-    notes: PDF_NOTES_LIBRARY.length,
-    passages: TYPING_PASSAGES.length,
-    quizTotal: QUESTIONS_DATABASE.length,
-  });
+  useEffect(() => {
+    if (activeNotice) {
+      window.history.pushState({ notice: true }, '', '#/notice');
+      const handlePop = () => setActiveNotice(null);
+      window.addEventListener('popstate', handlePop);
+      return () => window.removeEventListener('popstate', handlePop);
+    }
+  }, [activeNotice]);
+
+  // Cached counts for immediate real data display without 1-2s delay
+  const [counts, setCounts] = useState(() => StorageService.getCachedCounts());
 
   useEffect(() => {
     const unsubscribeCustom = FirestoreService.subscribeHomeCustomModules((modules) => {
       setCustomModules(modules);
+      StorageService.saveCachedHomeCustomModules(modules);
     });
 
     const unsubMcq = FirestoreService.subscribeEnglishMcq((list) => {
-      setCounts((prev) => ({ ...prev, mcq: list.length }));
+      setCounts((prev) => {
+        const next = { ...prev, mcq: list.length };
+        StorageService.saveCachedCounts(next);
+        return next;
+      });
     });
     const unsubSpell = FirestoreService.subscribeEnglishSpelling((list) => {
-      setCounts((prev) => ({ ...prev, spelling: list.length }));
+      setCounts((prev) => {
+        const next = { ...prev, spelling: list.length };
+        StorageService.saveCachedCounts(next);
+        return next;
+      });
     });
     const unsubSent = FirestoreService.subscribeEnglishSentences((list) => {
-      setCounts((prev) => ({ ...prev, sentences: list.length }));
+      setCounts((prev) => {
+        const next = { ...prev, sentences: list.length };
+        StorageService.saveCachedCounts(next);
+        return next;
+      });
     });
     const unsubVocab = FirestoreService.subscribeEnglishVocab((list) => {
-      setCounts((prev) => ({ ...prev, vocab: list.length }));
+      setCounts((prev) => {
+        const next = { ...prev, vocab: list.length };
+        StorageService.saveCachedCounts(next);
+        return next;
+      });
     });
     const unsubTyping = FirestoreService.subscribeEnglishTyping((list) => {
-      setCounts((prev) => ({ ...prev, typing: list.length }));
+      setCounts((prev) => {
+        const next = { ...prev, typing: list.length };
+        StorageService.saveCachedCounts(next);
+        return next;
+      });
     });
     const unsubGrammar = FirestoreService.subscribeEnglishGrammar((list) => {
-      setCounts((prev) => ({ ...prev, grammar: list.length }));
+      setCounts((prev) => {
+        const next = { ...prev, grammar: list.length };
+        StorageService.saveCachedCounts(next);
+        return next;
+      });
     });
     const unsubStories = FirestoreService.subscribeEnglishStories((list) => {
-      setCounts((prev) => ({ ...prev, stories: list.length }));
+      setCounts((prev) => {
+        const next = { ...prev, stories: list.length };
+        StorageService.saveCachedCounts(next);
+        return next;
+      });
     });
 
     return () => {

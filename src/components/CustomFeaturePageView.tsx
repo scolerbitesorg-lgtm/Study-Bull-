@@ -18,6 +18,23 @@ export const CustomFeaturePageView: React.FC<CustomFeaturePageViewProps> = ({
 }) => {
   const [activeSubButton, setActiveSubButton] = useState<NestedSubButton | null>(null);
 
+  // Sync sub-button with navigation
+  React.useEffect(() => {
+    const handlePop = () => {
+      const hash = window.location.hash || '';
+      const parts = hash.replace(/^#\/?/, '').split('/');
+      if (parts.length <= 2) {
+        setActiveSubButton(null);
+      }
+    };
+    window.addEventListener('popstate', handlePop);
+    window.addEventListener('hashchange', handlePop);
+    return () => {
+      window.removeEventListener('popstate', handlePop);
+      window.removeEventListener('hashchange', handlePop);
+    };
+  }, []);
+
   // If activeSubButton has code or module itself has code
   const activeCode = activeSubButton?.contentCode || module.contentCode;
   const activeTitle = activeSubButton
@@ -30,6 +47,11 @@ export const CustomFeaturePageView: React.FC<CustomFeaturePageViewProps> = ({
       window.open(subBtn.actionTarget, '_blank');
     } else {
       setActiveSubButton(subBtn);
+      window.history.pushState(
+        { section: 'custom_feature', moduleId: module.id, subId: subBtn.id },
+        '',
+        `#/custom/${module.id}/${subBtn.id}`
+      );
     }
   };
 
@@ -81,7 +103,7 @@ export const CustomFeaturePageView: React.FC<CustomFeaturePageViewProps> = ({
           <button
             onClick={() => {
               playTapSound(soundEnabled);
-              setActiveSubButton(null);
+              window.history.back();
             }}
             type="button"
             className="flex items-center gap-1 text-[11px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 px-2.5 py-1.5 rounded-xl border border-blue-200 transition-all active:scale-95 cursor-pointer shrink-0"

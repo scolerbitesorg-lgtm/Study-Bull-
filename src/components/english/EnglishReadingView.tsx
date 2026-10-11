@@ -33,6 +33,24 @@ export const EnglishReadingView: React.FC<EnglishReadingViewProps> = ({
   const [selectedCompOpt, setSelectedCompOpt] = useState<number | null>(null);
   const [compAnswered, setCompAnswered] = useState(false);
 
+  // Step-by-step navigation sync for mobile back button
+  React.useEffect(() => {
+    const syncFromNavigation = () => {
+      const hash = window.location.hash || '';
+      if (!hash.match(/#\/english\/reading\/.+/)) {
+        setSelectedStory(null);
+      }
+    };
+
+    window.addEventListener('popstate', syncFromNavigation);
+    window.addEventListener('hashchange', syncFromNavigation);
+
+    return () => {
+      window.removeEventListener('popstate', syncFromNavigation);
+      window.removeEventListener('hashchange', syncFromNavigation);
+    };
+  }, []);
+
   const handleSelectStory = (s: EnglishStoryItem) => {
     playTapSound(soundEnabled);
     setSelectedStory(s);
@@ -40,6 +58,11 @@ export const EnglishReadingView: React.FC<EnglishReadingViewProps> = ({
     setCompIdx(0);
     setSelectedCompOpt(null);
     setCompAnswered(false);
+    window.history.pushState(
+      { section: 'english', englishSubModule: 'reading', storyId: s.id },
+      '',
+      `#/english/reading/${s.id}`
+    );
   };
 
   const handleCompAnswer = (idx: number) => {
@@ -141,6 +164,20 @@ export const EnglishReadingView: React.FC<EnglishReadingViewProps> = ({
       ) : (
         /* STORY READER DETAIL VIEW */
         <div className="space-y-4 animate-in fade-in">
+          {/* Back to Stories Button */}
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => {
+                playTapSound(soundEnabled);
+                window.history.back();
+              }}
+              className="flex items-center gap-1.5 py-1 px-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 active:scale-95 transition-all shadow-2xs cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>{language === 'hi' ? 'कहानियां सूची' : 'Stories List'}</span>
+            </button>
+          </div>
+
           <div className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-xs space-y-3">
             <div className="flex items-center justify-between">
               <div>
