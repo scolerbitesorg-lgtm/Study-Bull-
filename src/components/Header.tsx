@@ -1,6 +1,6 @@
 import React from 'react';
 import { MainSection, Language } from '../types';
-import { Volume2, VolumeX, ArrowLeft, Home } from 'lucide-react';
+import { Volume2, VolumeX, ArrowLeft, Home, Settings } from 'lucide-react';
 import { Logo } from './Logo';
 import { playTapSound } from '../utils/audio';
 
@@ -13,6 +13,7 @@ interface HeaderProps {
   onToggleLanguage: () => void;
   soundEnabled: boolean;
   onToggleSound: () => void;
+  onOpenAdmin?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -24,6 +25,7 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleLanguage,
   soundEnabled,
   onToggleSound,
+  onOpenAdmin,
 }) => {
   const getSectionTitle = () => {
     if (currentSection === 'quiz') return language === 'hi' ? 'Quiz (अभ्यास)' : 'Quiz Practice';
@@ -36,8 +38,8 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 text-slate-100 shadow-xl">
-      <div className="max-w-md mx-auto px-3 sm:px-4 py-2.5 flex items-center justify-between gap-2">
+    <header className="sticky top-0 z-40 bg-gradient-to-r from-blue-900 via-blue-800 to-indigo-900 text-white shadow-md">
+      <div className="max-w-md mx-auto px-3 sm:px-4 py-2 flex items-center justify-between gap-2">
         {/* Left Side Navigation Controls */}
         <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
           {currentSection !== 'menu' ? (
@@ -99,6 +101,20 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Right Controls */}
         <div className="flex items-center gap-1.5 shrink-0">
+          {/* Admin Panel Button */}
+          {onOpenAdmin && (
+            <button
+              onClick={() => {
+                playTapSound(soundEnabled);
+                onOpenAdmin();
+              }}
+              title={language === 'hi' ? 'एडमिन पोर्टल (बटन व सेक्शन प्रबंधन)' : 'Admin Panel (Buttons & Sections)'}
+              className="w-8 h-8 flex items-center justify-center bg-amber-400 hover:bg-amber-300 text-amber-950 border border-amber-300 rounded-xl font-bold active:scale-90 transition-all cursor-pointer shadow-xs"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+          )}
+
           {/* Language Toggle */}
           <button
             onClick={() => {

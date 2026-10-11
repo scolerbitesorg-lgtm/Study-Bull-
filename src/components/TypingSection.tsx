@@ -66,7 +66,8 @@ const dedupePassages = (list: TypingPassage[]): TypingPassage[] => {
   const out: TypingPassage[] = [];
   for (let i = 0; i < list.length; i++) {
     const item = list[i];
-    const id = item.id || `passage_${i}`;
+    if (!item) continue;
+    const id = (item.id && String(item.id).trim()) || `passage_${i}`;
     if (!seen.has(id)) {
       seen.add(id);
       out.push({ ...item, id });
@@ -417,7 +418,7 @@ export const TypingSection: React.FC<TypingSectionProps> = ({
             }
 
             return (
-              <span key={index} className={charStyle}>
+              <span key={`char_${index}`} className={charStyle}>
                 {char}
               </span>
             );
@@ -490,7 +491,7 @@ export const TypingSection: React.FC<TypingSectionProps> = ({
             const Icon = m.icon;
             return (
               <button
-                key={m.id}
+                key={`typing_mode_${m.id}`}
                 onClick={() => {
                   playTapSound(soundEnabled);
                   setMode(m.id as TypingMode);
@@ -544,7 +545,7 @@ export const TypingSection: React.FC<TypingSectionProps> = ({
         <div className="grid grid-cols-5 gap-1">
           {[1, 2, 5, 10, 0].map((mins) => (
             <button
-              key={mins}
+              key={`typing_duration_${mins}`}
               onClick={() => {
                 playTapSound(soundEnabled);
                 setDurationMinutes(mins);
@@ -575,7 +576,7 @@ export const TypingSection: React.FC<TypingSectionProps> = ({
             { id: 'emerald', name: 'Matrix', color: 'bg-emerald-950' },
           ].map((t) => (
             <button
-              key={t.id}
+              key={`typing_theme_${t.id}`}
               onClick={() => setTheme(t.id as TypingTheme)}
               title={t.name}
               className={`w-6 h-6 rounded-full border ${t.color} cursor-pointer transition-transform ${
@@ -594,32 +595,35 @@ export const TypingSection: React.FC<TypingSectionProps> = ({
           </span>
 
           <div className="space-y-2.5">
-            {filteredPassages.map((p, pIdx) => (
-              <button
-                key={`passage_${p.id || pIdx}_${pIdx}`}
-                onClick={() => handleStartTest(p)}
-                type="button"
-                className="relative w-full p-4 bg-white rounded-2xl border border-slate-200/90 shadow-xs hover:border-blue-300 active:scale-95 active:bg-blue-50/60 active:border-blue-400 active:shadow-inner transition-all duration-150 cursor-pointer flex items-center justify-between text-left group select-none"
-              >
-                <div className="absolute top-3.5 right-3.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-100 group-hover:scale-110 transition-transform block" />
-                </div>
+            {filteredPassages.map((p, pIdx) => {
+              const cardKey = `typing_passage_${p.id || 'idx'}_${pIdx}`;
+              return (
+                <button
+                  key={cardKey}
+                  onClick={() => handleStartTest(p)}
+                  type="button"
+                  className="relative w-full p-4 bg-white rounded-2xl border border-slate-200/90 shadow-xs hover:border-blue-300 active:scale-95 active:bg-blue-50/60 active:border-blue-400 active:shadow-inner transition-all duration-150 cursor-pointer flex items-center justify-between text-left group select-none"
+                >
+                  <div className="absolute top-3.5 right-3.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-100 group-hover:scale-110 transition-transform block" />
+                  </div>
 
-                <div className="flex items-center gap-3 pr-6">
-                  <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center font-bold text-lg shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                    <Keyboard className="w-5 h-5" />
+                  <div className="flex items-center gap-3 pr-6">
+                    <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center font-bold text-lg shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                      <Keyboard className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-blue-700 block leading-tight">
+                        {p.title}
+                      </span>
+                      <span className="text-[11px] text-slate-500 font-medium mt-0.5 block">
+                        {p.wordCount} {language === 'hi' ? 'शब्द' : 'Words'} · {p.category}
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-blue-700 block leading-tight">
-                      {p.title}
-                    </span>
-                    <span className="text-[11px] text-slate-500 font-medium mt-0.5 block">
-                      {p.wordCount} {language === 'hi' ? 'शब्द' : 'Words'} · {p.category}
-                    </span>
-                  </div>
-                </div>
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

@@ -33,6 +33,7 @@ import {
   MOCK_TESTS,
   PDF_NOTES_LIBRARY,
   TYPING_PASSAGES,
+  DEFAULT_HOME_BUTTONS,
 } from '../data/mockData';
 import {
   DEFAULT_ENGLISH_SENTENCES,
@@ -126,6 +127,30 @@ export const FirestoreService = {
     );
   },
 
+  // Real-time listener for Questions
+  subscribeQuestions(callback: (questions: Question[]) => void) {
+    const colRef = collection(db, 'questions');
+    return onSnapshot(
+      colRef,
+      (snapshot) => {
+        if (snapshot.empty) {
+          this.seedQuestions();
+          callback(QUESTIONS_DATABASE);
+        } else {
+          const list: Question[] = [];
+          snapshot.forEach((docSnap) => {
+            list.push(docSnap.data() as Question);
+          });
+          callback(list.length > 0 ? list : QUESTIONS_DATABASE);
+        }
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, 'questions');
+        callback(QUESTIONS_DATABASE);
+      }
+    );
+  },
+
   // Real-time listener for Mock Tests
   subscribeMockTests(callback: (tests: MockTest[]) => void) {
     const colRef = collection(db, 'mockTests');
@@ -186,7 +211,8 @@ export const FirestoreService = {
         } else {
           const list: TypingPassage[] = [];
           snapshot.forEach((docSnap) => {
-            list.push(docSnap.data() as TypingPassage);
+            const data = docSnap.data() as TypingPassage;
+            list.push({ ...data, id: docSnap.id || data.id });
           });
           callback(list.length > 0 ? list : TYPING_PASSAGES);
         }
@@ -273,11 +299,13 @@ export const FirestoreService = {
 
   async ensureDefaultFirestoreData() {
     try {
-      const [catSnap, subSnap, mockSnap, notesSnap] = await Promise.all([
+      const [catSnap, subSnap, mockSnap, notesSnap, typingSnap, qSnap] = await Promise.all([
         getDocs(collection(db, 'categories')),
         getDocs(collection(db, 'subjects')),
         getDocs(collection(db, 'mockTests')),
         getDocs(collection(db, 'notes')),
+        getDocs(collection(db, 'typingPassages')),
+        getDocs(collection(db, 'questions')),
       ]);
 
       if (catSnap.empty) {
@@ -286,6 +314,8 @@ export const FirestoreService = {
       if (subSnap.empty) {
         await this.seedSubjects();
         await this.seedTopics();
+      }
+      if (qSnap.empty) {
         await this.seedQuestions();
       }
       if (mockSnap.empty) {
@@ -294,8 +324,183 @@ export const FirestoreService = {
       if (notesSnap.empty) {
         await this.seedNotes();
       }
+      if (typingSnap.empty) {
+        await this.seedTypingPassages();
+      }
+
+      // Check and seed English learning default modules
+      const [vocabSnap, sentSnap, spellSnap, mcqSnap, engTypeSnap, gramSnap, storiesSnap] = await Promise.all([
+        getDocs(collection(db, 'englishVocab')),
+        getDocs(collection(db, 'englishSentences')),
+        getDocs(collection(db, 'englishSpelling')),
+        getDocs(collection(db, 'englishMcq')),
+        getDocs(collection(db, 'englishTyping')),
+        getDocs(collection(db, 'englishGrammar')),
+        getDocs(collection(db, 'englishStories')),
+      ]);
+
+      if (vocabSnap.empty) await this.seedEnglishVocab();
+      if (sentSnap.empty) await this.seedEnglishSentences();
+      if (spellSnap.empty) await this.seedEnglishSpelling();
+      if (mcqSnap.empty) await this.seedEnglishMcq();
+      if (engTypeSnap.empty) await this.seedEnglishTyping();
+      if (gramSnap.empty) await this.seedEnglishGrammar();
+      if (storiesSnap.empty) await this.seedEnglishStories();
+
+      // Check and seed default home custom modules & buttons if none exist
+      const homeCustomSnap = await getDocs(collection(db, 'homeCustomModules'));
+      if (homeCustomSnap.empty) {
+        await this.seedHomeCustomModules();
+      }
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, 'defaultData');
+    }
+  },
+
+  async seedHomeCustomModules() {
+    try {
+      for (const btn of DEFAULT_HOME_BUTTONS) {
+        await setDoc(doc(db, 'homeCustomModules', btn.id), btn);
+      }
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, 'homeCustomModules');
+    }
+  },
+
+  // Complete A to Z App Data Upload to Firebase Cloud (Force Upload & Sync)
+  async uploadAllAppDataToFirestore(onProgress?: (step: string, percent: number) => void): Promise<{ success: boolean; totalUploaded: number; details: Record<string, number> }> {
+    const details: Record<string, number> = {
+      homeButtons: 0,
+      questions: 0,
+      mockTests: 0,
+      notes: 0,
+      typingPassages: 0,
+      categories: 0,
+      subjects: 0,
+      topics: 0,
+      englishVocab: 0,
+      englishSentences: 0,
+      englishSpelling: 0,
+      englishMcq: 0,
+      englishTyping: 0,
+      englishGrammar: 0,
+      englishStories: 0,
+    };
+
+    try {
+      // 1. Home Buttons & Custom Modules
+      onProgress?.('Uploading Home Screen Buttons...', 5);
+      for (const btn of DEFAULT_HOME_BUTTONS) {
+        await setDoc(doc(db, 'homeCustomModules', btn.id), btn);
+        details.homeButtons++;
+      }
+
+      // 2. Exam Categories
+      onProgress?.('Uploading Exam Categories...', 12);
+      for (const cat of EXAM_CATEGORIES) {
+        await setDoc(doc(db, 'categories', cat.id), cat);
+        details.categories++;
+      }
+
+      // 3. Subjects
+      onProgress?.('Uploading Exam Subjects...', 18);
+      for (const sub of SUBJECTS) {
+        await setDoc(doc(db, 'subjects', sub.id), sub);
+        details.subjects++;
+      }
+
+      // 4. Topics
+      onProgress?.('Uploading Subject Topics...', 25);
+      for (const subTopics of Object.values(TOPICS)) {
+        for (const topic of subTopics) {
+          await setDoc(doc(db, 'topics', topic.id), topic);
+          details.topics++;
+        }
+      }
+
+      // 5. Questions Database
+      onProgress?.('Uploading Questions Database...', 35);
+      for (const q of QUESTIONS_DATABASE) {
+        await setDoc(doc(db, 'questions', q.id), q);
+        details.questions++;
+      }
+
+      // 6. Mock Tests
+      onProgress?.('Uploading Speed Mock Tests...', 45);
+      for (const test of MOCK_TESTS) {
+        await setDoc(doc(db, 'mockTests', test.id), test);
+        details.mockTests++;
+      }
+
+      // 7. PDF Notes Library
+      onProgress?.('Uploading PDF Notes Library...', 55);
+      for (const note of PDF_NOTES_LIBRARY) {
+        await setDoc(doc(db, 'notes', note.id), note);
+        details.notes++;
+      }
+
+      // 8. Typing Passages
+      onProgress?.('Uploading Typing Test Passages...', 65);
+      for (const passage of TYPING_PASSAGES) {
+        await setDoc(doc(db, 'typingPassages', passage.id), passage);
+        details.typingPassages++;
+      }
+
+      // 9. English Vocabulary
+      onProgress?.('Uploading English Vocabulary...', 72);
+      for (const item of DEFAULT_ENGLISH_VOCAB) {
+        await setDoc(doc(db, 'englishVocab', item.id), item);
+        details.englishVocab++;
+      }
+
+      // 10. English Sentences
+      onProgress?.('Uploading English Sentences...', 78);
+      for (const item of DEFAULT_ENGLISH_SENTENCES) {
+        await setDoc(doc(db, 'englishSentences', item.id), item);
+        details.englishSentences++;
+      }
+
+      // 11. English Spelling
+      onProgress?.('Uploading English Spelling Drills...', 83);
+      for (const item of DEFAULT_ENGLISH_SPELLING) {
+        await setDoc(doc(db, 'englishSpelling', item.id), item);
+        details.englishSpelling++;
+      }
+
+      // 12. English MCQ Questions
+      onProgress?.('Uploading English Booster MCQs...', 89);
+      for (const item of DEFAULT_ENGLISH_MCQ) {
+        await setDoc(doc(db, 'englishMcq', item.id), item);
+        details.englishMcq++;
+      }
+
+      // 13. English Sentence Typing
+      onProgress?.('Uploading English Typing Drills...', 93);
+      for (const item of DEFAULT_ENGLISH_TYPING) {
+        await setDoc(doc(db, 'englishTyping', item.id), item);
+        details.englishTyping++;
+      }
+
+      // 14. English Golden Grammar
+      onProgress?.('Uploading English Grammar Rules...', 96);
+      for (const item of DEFAULT_ENGLISH_GRAMMAR) {
+        await setDoc(doc(db, 'englishGrammar', item.id), item);
+        details.englishGrammar++;
+      }
+
+      // 15. English Reading Stories
+      onProgress?.('Uploading English Stories...', 99);
+      for (const item of DEFAULT_ENGLISH_STORIES) {
+        await setDoc(doc(db, 'englishStories', item.id), item);
+        details.englishStories++;
+      }
+
+      const totalUploaded = Object.values(details).reduce((a, b) => a + b, 0);
+      onProgress?.(`All ${totalUploaded} items uploaded successfully!`, 100);
+      return { success: true, totalUploaded, details };
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, 'uploadAllAppData');
+      throw e;
     }
   },
 
@@ -668,8 +873,9 @@ export const FirestoreService = {
         const list: HomeCustomModule[] = [];
         snapshot.forEach((snap) => {
           const data = snap.data() as HomeCustomModule;
-          if (data.active !== false) {
-            list.push(data);
+          const fullItem: HomeCustomModule = { ...data, id: snap.id || data.id };
+          if (fullItem.active !== false) {
+            list.push(fullItem);
           }
         });
         list.sort((a, b) => (a.order || 0) - (b.order || 0));

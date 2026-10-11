@@ -100,6 +100,27 @@
         "wordCount": { "type": "number" }
       },
       "required": ["id", "title", "content"]
+    },
+    "HomeCustomModule": {
+      "title": "HomeCustomModule",
+      "description": "Customizable home screen buttons with nested sections",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "title": { "type": "string", "maxLength": 200 },
+        "titleHi": { "type": "string", "maxLength": 200 },
+        "subtitle": { "type": "string", "maxLength": 300 },
+        "subtitleHi": { "type": "string", "maxLength": 300 },
+        "icon": { "type": "string", "maxLength": 32 },
+        "color": { "type": "string", "maxLength": 32 },
+        "badge": { "type": "string", "maxLength": 32 },
+        "actionType": { "type": "string", "maxLength": 32 },
+        "actionTarget": { "type": "string", "maxLength": 500 },
+        "contentCode": { "type": "string" },
+        "order": { "type": "number" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["id", "title", "active"]
     }
   },
   "firestore": {
@@ -130,6 +151,10 @@
     "/typingPassages/{passageId}": {
       "schema": "TypingPassage",
       "description": "Typing skill test passages collection"
+    },
+    "/homeCustomModules/{moduleId}": {
+      "schema": "HomeCustomModule",
+      "description": "Custom admin-added home screen buttons and sections"
     }
   }
 }

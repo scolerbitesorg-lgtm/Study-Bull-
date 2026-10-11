@@ -274,6 +274,32 @@ export interface UserEnglishProgress {
   lastActive: string;
 }
 
+export interface CustomQuizQuestion {
+  id: string;
+  question: string;
+  questionHi?: string;
+  options: string[];
+  optionsHi?: string[];
+  correctIndex: number;
+  explanation?: string;
+  explanationHi?: string;
+}
+
+export interface CustomSubSection {
+  id: string;
+  title: string;
+  titleHi: string;
+  description?: string;
+  descriptionHi?: string;
+  icon?: string;
+  badge?: string;
+  contentType: 'notes' | 'quiz' | 'code' | 'link';
+  notesContent?: string;
+  quizQuestions?: CustomQuizQuestion[];
+  contentCode?: string;
+  linkUrl?: string;
+}
+
 export interface NestedSubButton {
   id: string;
   title: string;
@@ -293,9 +319,12 @@ export interface HomeCustomModule {
   icon?: string;
   color?: string;
   badge?: string;
-  actionType: 'link' | 'section' | 'notice' | 'modal' | 'code' | 'nested_buttons';
+  actionType: 'nested_sections' | 'nested_buttons' | 'code' | 'notes' | 'quiz' | 'link' | 'notice' | 'modal' | 'section';
   actionTarget?: string;
   contentCode?: string;
+  notesContent?: string;
+  quizQuestions?: CustomQuizQuestion[];
+  subSections?: CustomSubSection[];
   nestedButtons?: NestedSubButton[];
   order: number;
   active: boolean;

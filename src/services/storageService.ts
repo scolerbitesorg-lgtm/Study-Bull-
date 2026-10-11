@@ -1,4 +1,5 @@
 import { QuizAttempt, MockAttempt } from '../types';
+import { DEFAULT_HOME_BUTTONS } from '../data/mockData';
 
 const STORAGE_KEYS = {
   BOOKMARKS: 'studybull_bookmarks',
@@ -232,12 +233,12 @@ export const StorageService = {
       const data = localStorage.getItem('studybull_cached_custom_modules');
       if (data) {
         const parsed = JSON.parse(data);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch {
       // ignore
     }
-    return [];
+    return DEFAULT_HOME_BUTTONS;
   },
 
   saveCachedHomeCustomModules(modules: import('../types').HomeCustomModule[]): void {
@@ -261,15 +262,7 @@ export const StorageService = {
     passages: number;
     quizTotal: number;
   } {
-    try {
-      const data = localStorage.getItem('studybull_cached_counts');
-      if (data) {
-        return JSON.parse(data);
-      }
-    } catch {
-      // ignore
-    }
-    return {
+    const trueDefaults = {
       mcq: 25,
       spelling: 25,
       sentences: 25,
@@ -278,10 +271,24 @@ export const StorageService = {
       grammar: 12,
       stories: 8,
       mock: 5,
-      notes: 12,
-      passages: 25,
-      quizTotal: 850,
+      notes: 8,
+      passages: 7,
+      quizTotal: 20,
     };
+    try {
+      const data = localStorage.getItem('studybull_cached_counts');
+      if (data) {
+        const parsed = JSON.parse(data);
+        // Prevent legacy 850 or invalid counts from showing for a few seconds
+        if (parsed.quizTotal === 850 || !parsed.quizTotal) {
+          parsed.quizTotal = 20;
+        }
+        return { ...trueDefaults, ...parsed };
+      }
+    } catch {
+      // ignore
+    }
+    return trueDefaults;
   },
 
   saveCachedCounts(counts: any): void {

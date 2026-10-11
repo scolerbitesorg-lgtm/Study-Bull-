@@ -84,6 +84,10 @@ service cloud.firestore {
       allow read, write: if isValidId(moduleId);
     }
 
+    match /homeButtons/{buttonId} {
+      allow read, write: if isValidId(buttonId);
+    }
+
     // User attempts and scores
     match /users/{userId}/attempts/{attemptId} {
       allow read, write: if isValidId(userId) && isValidId(attemptId);

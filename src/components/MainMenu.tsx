@@ -10,6 +10,7 @@ interface MainMenuProps {
   onSelectCustomModule: (module: HomeCustomModule) => void;
   language: Language;
   soundEnabled: boolean;
+  onOpenAdmin?: () => void;
 }
 
 export const MainMenu: React.FC<MainMenuProps> = ({
@@ -17,6 +18,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   onSelectCustomModule,
   language,
   soundEnabled,
+  onOpenAdmin,
 }) => {
   // Cache-first initial state: Instant zero-latency render on refresh!
   const [customModules, setCustomModules] = useState<HomeCustomModule[]>(() =>
@@ -37,63 +39,69 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   const [counts, setCounts] = useState(() => StorageService.getCachedCounts());
 
   useEffect(() => {
+    let pendingCounts = { ...StorageService.getCachedCounts() };
+    let updateTimer: NodeJS.Timeout | null = null;
+    const scheduleCountUpdate = (partial: Partial<typeof counts>) => {
+      pendingCounts = { ...pendingCounts, ...partial };
+      if (updateTimer) clearTimeout(updateTimer);
+      updateTimer = setTimeout(() => {
+        setCounts(pendingCounts);
+        StorageService.saveCachedCounts(pendingCounts);
+      }, 80);
+    };
+
     const unsubscribeCustom = FirestoreService.subscribeHomeCustomModules((modules) => {
-      setCustomModules(modules);
-      StorageService.saveCachedHomeCustomModules(modules);
+      if (modules && modules.length > 0) {
+        setCustomModules(modules);
+        StorageService.saveCachedHomeCustomModules(modules);
+      }
+    });
+
+    const unsubQuiz = FirestoreService.subscribeQuestions((list) => {
+      scheduleCountUpdate({ quizTotal: list.length });
+    });
+
+    const unsubMock = FirestoreService.subscribeMockTests((list) => {
+      scheduleCountUpdate({ mock: list.length });
+    });
+
+    const unsubNotes = FirestoreService.subscribeNotes((list) => {
+      scheduleCountUpdate({ notes: list.length });
+    });
+
+    const unsubPassages = FirestoreService.subscribeTypingPassages((list) => {
+      scheduleCountUpdate({ passages: list.length });
     });
 
     const unsubMcq = FirestoreService.subscribeEnglishMcq((list) => {
-      setCounts((prev) => {
-        const next = { ...prev, mcq: list.length };
-        StorageService.saveCachedCounts(next);
-        return next;
-      });
+      scheduleCountUpdate({ mcq: list.length });
     });
     const unsubSpell = FirestoreService.subscribeEnglishSpelling((list) => {
-      setCounts((prev) => {
-        const next = { ...prev, spelling: list.length };
-        StorageService.saveCachedCounts(next);
-        return next;
-      });
+      scheduleCountUpdate({ spelling: list.length });
     });
     const unsubSent = FirestoreService.subscribeEnglishSentences((list) => {
-      setCounts((prev) => {
-        const next = { ...prev, sentences: list.length };
-        StorageService.saveCachedCounts(next);
-        return next;
-      });
+      scheduleCountUpdate({ sentences: list.length });
     });
     const unsubVocab = FirestoreService.subscribeEnglishVocab((list) => {
-      setCounts((prev) => {
-        const next = { ...prev, vocab: list.length };
-        StorageService.saveCachedCounts(next);
-        return next;
-      });
+      scheduleCountUpdate({ vocab: list.length });
     });
     const unsubTyping = FirestoreService.subscribeEnglishTyping((list) => {
-      setCounts((prev) => {
-        const next = { ...prev, typing: list.length };
-        StorageService.saveCachedCounts(next);
-        return next;
-      });
+      scheduleCountUpdate({ typing: list.length });
     });
     const unsubGrammar = FirestoreService.subscribeEnglishGrammar((list) => {
-      setCounts((prev) => {
-        const next = { ...prev, grammar: list.length };
-        StorageService.saveCachedCounts(next);
-        return next;
-      });
+      scheduleCountUpdate({ grammar: list.length });
     });
     const unsubStories = FirestoreService.subscribeEnglishStories((list) => {
-      setCounts((prev) => {
-        const next = { ...prev, stories: list.length };
-        StorageService.saveCachedCounts(next);
-        return next;
-      });
+      scheduleCountUpdate({ stories: list.length });
     });
 
     return () => {
+      if (updateTimer) clearTimeout(updateTimer);
       unsubscribeCustom();
+      unsubQuiz();
+      unsubMock();
+      unsubNotes();
+      unsubPassages();
       unsubMcq();
       unsubSpell();
       unsubSent();
@@ -138,42 +146,36 @@ export const MainMenu: React.FC<MainMenuProps> = ({
       icon: '⚡',
       title: language === 'hi' ? 'Quiz अभ्यास' : 'Quiz Practice',
       subtitle: language === 'hi' ? `${counts.quizTotal} विषयवार MCQs` : `${counts.quizTotal} Subject MCQs`,
-      countBadge: `${counts.quizTotal} प्रश्न`,
     },
     {
       id: 'mock' as MainSection,
       icon: '📝',
       title: language === 'hi' ? 'Mock टेस्ट' : 'Mock Tests',
       subtitle: language === 'hi' ? `${counts.mock} लाइव टाइमर टेस्ट` : `${counts.mock} Live Series`,
-      countBadge: `${counts.mock} टेस्ट`,
     },
     {
       id: 'notes' as MainSection,
       icon: '📚',
       title: language === 'hi' ? 'Notes लाइब्रेरी' : 'PDF Notes',
       subtitle: language === 'hi' ? `${counts.notes} स्पष्ट PDF नोट्स` : `${counts.notes} Clear Reading`,
-      countBadge: `${counts.notes} नोट्स`,
     },
     {
       id: 'typing' as MainSection,
       icon: '⌨️',
       title: language === 'hi' ? 'Typing Skills' : 'Typing Test',
       subtitle: language === 'hi' ? `${counts.passages} SSC DEST पैसेज` : `${counts.passages} Passages`,
-      countBadge: `${counts.passages} पैसेज`,
     },
     {
       id: 'calculations' as MainSection,
       icon: '🧮',
       title: language === 'hi' ? 'Calculations' : 'Math Speed',
       subtitle: language === 'hi' ? 'BODMAS व ट्रिक्स' : 'BODMAS & Tricks',
-      countBadge: 'असीमित ड्रिल',
     },
     {
       id: 'english' as MainSection,
       icon: '🔤',
       title: language === 'hi' ? 'English Improve' : 'English Booster',
       subtitle: language === 'hi' ? `${totalEnglishItems} प्रश्न व शब्द` : `${totalEnglishItems} Practice Items`,
-      countBadge: `${totalEnglishItems} आइटम`,
     },
   ];
 
@@ -186,7 +188,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
             key={item.id}
             onClick={() => handleTap(item.id)}
             type="button"
-            className="relative flex flex-col items-center justify-center p-4 sm:p-4.5 bg-white rounded-2xl border border-slate-200/90 shadow-xs hover:border-blue-300 active:scale-95 active:bg-blue-50/60 active:border-blue-400 active:shadow-inner transition-all duration-150 cursor-pointer min-h-[124px] select-none text-center w-full group"
+            className="relative flex flex-col items-center justify-center p-4 sm:p-4.5 bg-white rounded-2xl border border-slate-200/90 shadow-xs hover:border-blue-300 active:scale-95 active:bg-blue-50/60 active:border-blue-400 active:shadow-inner transition-all duration-150 cursor-pointer min-h-[110px] select-none text-center w-full group"
           >
             {/* Top Right Green Active Indicator Dot */}
             <div className="absolute top-3 right-3 flex items-center justify-center">
@@ -194,7 +196,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
             </div>
 
             {/* Center Big Colorful Icon */}
-            <div className="text-3xl filter drop-shadow-xs group-hover:scale-110 transition-transform duration-150 mt-1">
+            <div className="text-3xl filter drop-shadow-xs group-hover:scale-110 transition-transform duration-150 mt-0.5">
               {item.icon}
             </div>
 
@@ -207,52 +209,48 @@ export const MainMenu: React.FC<MainMenuProps> = ({
                 {item.subtitle}
               </span>
             </div>
-
-            {/* Bottom Real Count Pill */}
-            <div className="mt-1.5">
-              <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 group-hover:bg-blue-100 group-hover:text-blue-800 transition-colors">
-                {item.countBadge}
-              </span>
-            </div>
           </button>
         ))}
 
         {/* Dynamic Admin-Added Custom Home Modules & Buttons (Styling perfectly unified with standard buttons) */}
-        {customModules.map((mod) => (
-          <button
-            key={mod.id}
-            onClick={() => handleCustomTap(mod)}
-            type="button"
-            className="relative flex flex-col items-center justify-center p-4 sm:p-4.5 bg-white rounded-2xl border border-slate-200/90 shadow-xs hover:border-blue-300 active:scale-95 active:bg-blue-50/60 active:border-blue-400 active:shadow-inner transition-all duration-150 cursor-pointer min-h-[124px] select-none text-center w-full group"
-          >
-            {/* Top Right Green Active Indicator Dot */}
-            <div className="absolute top-3 right-3 flex items-center justify-center">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-100 group-hover:scale-110 transition-transform block" />
-            </div>
+        {customModules
+          .filter(
+            (mod) =>
+              !['quiz', 'mock', 'notes', 'typing', 'calculations', 'english', 'btn_quiz', 'btn_mock', 'btn_notes', 'btn_typing', 'btn_calculations', 'btn_english'].includes(mod.id)
+          )
+          .map((mod) => {
+            const secCount = mod.subSections?.length || mod.nestedButtons?.length || 0;
+            return (
+              <button
+                key={mod.id}
+                onClick={() => handleCustomTap(mod)}
+                type="button"
+                className="relative flex flex-col items-center justify-center p-4 sm:p-4.5 bg-white rounded-2xl border border-slate-200/90 shadow-xs hover:border-blue-300 active:scale-95 active:bg-blue-50/60 active:border-blue-400 active:shadow-inner transition-all duration-150 cursor-pointer min-h-[110px] select-none text-center w-full group"
+              >
+                {/* Top Right Green Active Indicator Dot */}
+                <div className="absolute top-3 right-3 flex items-center justify-center">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-100 group-hover:scale-110 transition-transform block" />
+                </div>
 
-            {/* Center Big Colorful Icon */}
-            <div className="text-3xl filter drop-shadow-xs group-hover:scale-110 transition-transform duration-150 mt-1">
-              {mod.icon || '⭐'}
-            </div>
+                {/* Center Big Colorful Icon */}
+                <div className="text-3xl filter drop-shadow-xs group-hover:scale-110 transition-transform duration-150 mt-0.5">
+                  {mod.icon || '⭐'}
+                </div>
 
-            {/* Title & Subtitle */}
-            <div className="mt-2 text-center px-1">
-              <span className="block text-xs sm:text-sm font-bold text-slate-800 group-hover:text-blue-700 tracking-tight leading-snug">
-                {language === 'hi' ? mod.titleHi || mod.title : mod.title}
-              </span>
-              <span className="block text-[11px] text-slate-500 font-medium mt-0.5 leading-tight">
-                {language === 'hi' ? mod.subtitleHi || mod.subtitle || 'विशेष अभ्यास' : mod.subtitle || 'Special Feature'}
-              </span>
-            </div>
-
-            {/* Bottom Real Count / Badge Pill */}
-            <div className="mt-1.5">
-              <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 group-hover:bg-blue-100 group-hover:text-blue-800 transition-colors">
-                {mod.badge ? mod.badge : mod.actionType === 'code' ? 'विशेष टूल' : mod.actionType === 'nested_buttons' ? 'सब-बटन' : 'लाइव'}
-              </span>
-            </div>
-          </button>
-        ))}
+                {/* Title & Subtitle */}
+                <div className="mt-2 text-center px-1">
+                  <span className="block text-xs sm:text-sm font-bold text-slate-800 group-hover:text-blue-700 tracking-tight leading-snug">
+                    {language === 'hi' ? mod.titleHi || mod.title : mod.title}
+                  </span>
+                  <span className="block text-[11px] text-slate-500 font-medium mt-0.5 leading-tight">
+                    {language === 'hi'
+                      ? mod.subtitleHi || mod.subtitle || `${secCount > 0 ? `${secCount} सेक्शन्स` : 'विशेष अभ्यास'}`
+                      : mod.subtitle || `${secCount > 0 ? `${secCount} Sections` : 'Special Feature'}`}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
       </div>
 
       {/* Admin Notice / Custom Module Popup Modal */}

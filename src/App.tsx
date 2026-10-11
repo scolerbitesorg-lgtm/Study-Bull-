@@ -9,6 +9,7 @@ import { TypingSection } from './components/TypingSection';
 import { CalculationsSection } from './components/CalculationsSection';
 import { EnglishImproveSection } from './components/EnglishImproveSection';
 import { CustomFeaturePageView } from './components/CustomFeaturePageView';
+import { HomeButtonsAdminModal } from './components/admin/HomeButtonsAdminModal';
 import { StorageService } from './services/storageService';
 import { FirestoreService } from './firebase/firestoreService';
 
@@ -18,6 +19,19 @@ export default function App() {
   const [englishSubModule, setEnglishSubModule] = useState<EnglishSubModule>('overview');
   const [calcScreen, setCalcScreen] = useState<'setup' | 'practice' | 'result'>('setup');
   const [settings, setSettings] = useState(() => StorageService.getSettings());
+  const [isAdminModalOpen, setIsAdminModalOpen] = useState<boolean>(false);
+
+  // Keep selected custom module synced with Firestore
+  useEffect(() => {
+    const unsub = FirestoreService.subscribeHomeCustomModules((list) => {
+      StorageService.saveCachedHomeCustomModules(list);
+      if (selectedCustomModule) {
+        const found = list.find((m) => m.id === selectedCustomModule.id);
+        if (found) setSelectedCustomModule(found);
+      }
+    });
+    return () => unsub();
+  }, [selectedCustomModule]);
 
   // Ensure default data for Quiz, Mock, Notes in Firebase Firestore on startup
   useEffect(() => {
@@ -160,6 +174,8 @@ export default function App() {
     const isHi = settings.language === 'hi';
 
     if (currentSection === 'custom_feature') {
+      const parts = hash.replace(/^#\/?/, '').split('/');
+      if (parts.length >= 3) return isHi ? 'सेक्शन्स' : 'Sections';
       return isHi ? 'मेन्यू' : 'Menu';
     }
     if (currentSection === 'quiz') {
@@ -221,6 +237,7 @@ export default function App() {
         onToggleLanguage={toggleLanguage}
         soundEnabled={settings.soundEnabled}
         onToggleSound={toggleSound}
+        onOpenAdmin={() => setIsAdminModalOpen(true)}
       />
 
       {/* Main View Router */}
@@ -232,6 +249,7 @@ export default function App() {
             onSelectCustomModule={navigateToCustomModule}
             language={settings.language}
             soundEnabled={settings.soundEnabled}
+            onOpenAdmin={() => setIsAdminModalOpen(true)}
           />
         )}
 
@@ -303,6 +321,14 @@ export default function App() {
           />
         )}
       </main>
+
+      {/* Admin Panel Modal for Managing Home Screen Buttons & Nested Sections */}
+      <HomeButtonsAdminModal
+        isOpen={isAdminModalOpen}
+        onClose={() => setIsAdminModalOpen(false)}
+        language={settings.language}
+        soundEnabled={settings.soundEnabled}
+      />
     </div>
   );
 }
