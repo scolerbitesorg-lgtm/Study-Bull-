@@ -2,23 +2,23 @@ import React, { useEffect, useState } from 'react';
 import { MainSection, Language, HomeCustomModule } from '../types';
 import { playTapSound } from '../utils/audio';
 import { FirestoreService } from '../firebase/firestoreService';
-import { CustomFeatureRunnerModal } from './CustomFeatureRunnerModal';
 import { MOCK_TESTS, PDF_NOTES_LIBRARY, TYPING_PASSAGES, QUESTIONS_DATABASE } from '../data/mockData';
 
 interface MainMenuProps {
   onSelectSection: (section: MainSection) => void;
+  onSelectCustomModule: (module: HomeCustomModule) => void;
   language: Language;
   soundEnabled: boolean;
 }
 
 export const MainMenu: React.FC<MainMenuProps> = ({
   onSelectSection,
+  onSelectCustomModule,
   language,
   soundEnabled,
 }) => {
   const [customModules, setCustomModules] = useState<HomeCustomModule[]>([]);
   const [activeNotice, setActiveNotice] = useState<HomeCustomModule | null>(null);
-  const [activeCustomFeature, setActiveCustomFeature] = useState<HomeCustomModule | null>(null);
 
   // Real data counts from Firestore
   const [counts, setCounts] = useState({
@@ -94,10 +94,11 @@ export const MainMenu: React.FC<MainMenuProps> = ({
       window.open(mod.actionTarget, '_blank');
     } else if (mod.actionType === 'section' && mod.actionTarget) {
       onSelectSection(mod.actionTarget as MainSection);
-    } else if (mod.actionType === 'code' || mod.actionType === 'nested_buttons') {
-      setActiveCustomFeature(mod);
-    } else if (mod.actionType === 'notice' || mod.actionType === 'modal') {
+    } else if (mod.actionType === 'notice') {
       setActiveNotice(mod);
+    } else {
+      // Seamlessly open in-app page just like any other button (no cut/close popup!)
+      onSelectCustomModule(mod);
     }
   };
 
@@ -186,46 +187,38 @@ export const MainMenu: React.FC<MainMenuProps> = ({
           </button>
         ))}
 
-        {/* Dynamic Admin-Added Custom Home Modules & Buttons */}
+        {/* Dynamic Admin-Added Custom Home Modules & Buttons (Styling perfectly unified with standard buttons) */}
         {customModules.map((mod) => (
           <button
             key={mod.id}
             onClick={() => handleCustomTap(mod)}
             type="button"
-            className="relative flex flex-col items-center justify-center p-4 sm:p-4.5 bg-gradient-to-br from-indigo-50 to-blue-50 rounded-2xl border border-indigo-200 shadow-xs hover:border-indigo-400 active:scale-95 active:bg-indigo-100 transition-all duration-150 cursor-pointer min-h-[124px] select-none text-center w-full group"
+            className="relative flex flex-col items-center justify-center p-4 sm:p-4.5 bg-white rounded-2xl border border-slate-200/90 shadow-xs hover:border-blue-300 active:scale-95 active:bg-blue-50/60 active:border-blue-400 active:shadow-inner transition-all duration-150 cursor-pointer min-h-[124px] select-none text-center w-full group"
           >
-            {/* Top Right Badge / Indicator */}
-            <div className="absolute top-2.5 right-2.5 flex items-center justify-center">
-              {mod.badge ? (
-                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-600 text-white shadow-xs">
-                  {mod.badge}
-                </span>
-              ) : (
-                <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 ring-2 ring-indigo-100 block" />
-              )}
+            {/* Top Right Green Active Indicator Dot */}
+            <div className="absolute top-3 right-3 flex items-center justify-center">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-100 group-hover:scale-110 transition-transform block" />
             </div>
 
-            {/* Icon */}
+            {/* Center Big Colorful Icon */}
             <div className="text-3xl filter drop-shadow-xs group-hover:scale-110 transition-transform duration-150 mt-1">
               {mod.icon || '⭐'}
             </div>
 
             {/* Title & Subtitle */}
             <div className="mt-2 text-center px-1">
-              <span className="block text-xs sm:text-sm font-bold text-indigo-900 group-hover:text-indigo-700 tracking-tight leading-snug">
+              <span className="block text-xs sm:text-sm font-bold text-slate-800 group-hover:text-blue-700 tracking-tight leading-snug">
                 {language === 'hi' ? mod.titleHi || mod.title : mod.title}
               </span>
-              {(mod.subtitle || mod.subtitleHi) && (
-                <span className="block text-[11px] text-indigo-600/80 font-medium mt-0.5 leading-tight">
-                  {language === 'hi' ? mod.subtitleHi || mod.subtitle : mod.subtitle}
-                </span>
-              )}
+              <span className="block text-[11px] text-slate-500 font-medium mt-0.5 leading-tight">
+                {language === 'hi' ? mod.subtitleHi || mod.subtitle || 'विशेष अभ्यास' : mod.subtitle || 'Special Feature'}
+              </span>
             </div>
 
-            {/* Action Type Badge */}
+            {/* Bottom Real Count / Badge Pill */}
             <div className="mt-1.5">
-              <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-indigo-200/80 text-indigo-900">
-                {mod.actionType === 'code' ? '💻 Interactive App' : mod.actionType === 'nested_buttons' ? '📂 Sub-Buttons' : '✨ Custom Tool'}
+              <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 group-hover:bg-blue-100 group-hover:text-blue-800 transition-colors">
+                {mod.badge ? mod.badge : mod.actionType === 'code' ? 'विशेष टूल' : mod.actionType === 'nested_buttons' ? 'सब-बटन' : 'लाइव'}
               </span>
             </div>
           </button>
@@ -263,15 +256,6 @@ export const MainMenu: React.FC<MainMenuProps> = ({
             </button>
           </div>
         </div>
-      )}
-
-      {/* Interactive Custom Code / Feature Runner Modal */}
-      {activeCustomFeature && (
-        <CustomFeatureRunnerModal
-          module={activeCustomFeature}
-          language={language}
-          onClose={() => setActiveCustomFeature(null)}
-        />
       )}
     </div>
   );

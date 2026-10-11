@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MainSection, Language, EnglishSubModule } from './types';
+import { MainSection, Language, EnglishSubModule, HomeCustomModule } from './types';
 import { Header } from './components/Header';
 import { MainMenu } from './components/MainMenu';
 import { QuizSection } from './components/QuizSection';
@@ -8,13 +8,21 @@ import { NotesSection } from './components/NotesSection';
 import { TypingSection } from './components/TypingSection';
 import { CalculationsSection } from './components/CalculationsSection';
 import { EnglishImproveSection } from './components/EnglishImproveSection';
+import { CustomFeaturePageView } from './components/CustomFeaturePageView';
 import { StorageService } from './services/storageService';
+import { FirestoreService } from './firebase/firestoreService';
 
 export default function App() {
   const [currentSection, setCurrentSection] = useState<MainSection>('menu');
+  const [selectedCustomModule, setSelectedCustomModule] = useState<HomeCustomModule | null>(null);
   const [englishSubModule, setEnglishSubModule] = useState<EnglishSubModule>('overview');
   const [calcScreen, setCalcScreen] = useState<'setup' | 'practice' | 'result'>('setup');
   const [settings, setSettings] = useState(() => StorageService.getSettings());
+
+  // Ensure default data for Quiz, Mock, Notes in Firebase Firestore on startup
+  useEffect(() => {
+    FirestoreService.ensureDefaultFirestoreData();
+  }, []);
 
   // Browser history sync so back button only navigates one screen back, never exiting the web
   useEffect(() => {
@@ -41,9 +49,18 @@ export default function App() {
 
   const navigateToSection = (section: MainSection) => {
     setCurrentSection(section);
+    setSelectedCustomModule(null);
     setEnglishSubModule('overview');
     setCalcScreen('setup');
     window.history.pushState({ section, englishSubModule: 'overview', calcScreen: 'setup' }, '');
+  };
+
+  const navigateToCustomModule = (mod: HomeCustomModule) => {
+    setSelectedCustomModule(mod);
+    setCurrentSection('custom_feature');
+    setEnglishSubModule('overview');
+    setCalcScreen('setup');
+    window.history.pushState({ section: 'custom_feature', englishSubModule: 'overview', calcScreen: 'setup' }, '');
   };
 
   const navigateEnglishSubModule = (subMod: EnglishSubModule) => {
@@ -57,7 +74,6 @@ export default function App() {
   };
 
   const handleStepBack = () => {
-    // If inside a sub-module or sub-screen, navigate back using browser history stack
     if (window.history.state && (currentSection !== 'menu' || englishSubModule !== 'overview' || calcScreen !== 'setup')) {
       window.history.back();
     } else {
@@ -66,6 +82,9 @@ export default function App() {
   };
 
   const getBackLabel = () => {
+    if (currentSection === 'custom_feature') {
+      return settings.language === 'hi' ? 'मेन्यू' : 'Menu';
+    }
     if (currentSection === 'english') {
       return englishSubModule !== 'overview'
         ? (settings.language === 'hi' ? 'ओवरव्यू' : 'Overview')
@@ -112,8 +131,19 @@ export default function App() {
         {currentSection === 'menu' && (
           <MainMenu
             onSelectSection={navigateToSection}
+            onSelectCustomModule={navigateToCustomModule}
             language={settings.language}
             soundEnabled={settings.soundEnabled}
+          />
+        )}
+
+        {/* Dynamic Admin-Added Custom Feature / Code Runner (Opens full in-app view like all standard buttons) */}
+        {currentSection === 'custom_feature' && selectedCustomModule && (
+          <CustomFeaturePageView
+            module={selectedCustomModule}
+            language={settings.language}
+            soundEnabled={settings.soundEnabled}
+            onBackToMenu={() => navigateToSection('menu')}
           />
         )}
 

@@ -1,6 +1,6 @@
 export type Language = 'hi' | 'en';
 
-export type MainSection = 'menu' | 'quiz' | 'mock' | 'notes' | 'typing' | 'calculations' | 'english';
+export type MainSection = 'menu' | 'quiz' | 'mock' | 'notes' | 'typing' | 'calculations' | 'english' | 'custom_feature';
 
 export interface ExamCategory {
   id: string;

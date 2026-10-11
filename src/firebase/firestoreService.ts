@@ -249,6 +249,56 @@ export const FirestoreService = {
     }
   },
 
+  async seedTopics() {
+    try {
+      for (const subTopics of Object.values(TOPICS)) {
+        for (const topic of subTopics) {
+          await setDoc(doc(db, 'topics', topic.id), topic);
+        }
+      }
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, 'topics');
+    }
+  },
+
+  async seedQuestions() {
+    try {
+      for (const q of QUESTIONS_DATABASE) {
+        await setDoc(doc(db, 'questions', q.id), q);
+      }
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, 'questions');
+    }
+  },
+
+  async ensureDefaultFirestoreData() {
+    try {
+      const [catSnap, subSnap, mockSnap, notesSnap] = await Promise.all([
+        getDocs(collection(db, 'categories')),
+        getDocs(collection(db, 'subjects')),
+        getDocs(collection(db, 'mockTests')),
+        getDocs(collection(db, 'notes')),
+      ]);
+
+      if (catSnap.empty) {
+        await this.seedCategories();
+      }
+      if (subSnap.empty) {
+        await this.seedSubjects();
+        await this.seedTopics();
+        await this.seedQuestions();
+      }
+      if (mockSnap.empty) {
+        await this.seedMockTests();
+      }
+      if (notesSnap.empty) {
+        await this.seedNotes();
+      }
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, 'defaultData');
+    }
+  },
+
   // Admin dynamic updates methods (ready to be invoked by Admin Panel)
   async saveCategory(cat: ExamCategory) {
     await setDoc(doc(db, 'categories', cat.id), cat);

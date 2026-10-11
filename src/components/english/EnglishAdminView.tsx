@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   EnglishVocabItem,
   EnglishSentenceItem,
@@ -7,7 +7,6 @@ import {
   EnglishSentenceTypingItem,
   EnglishGrammarTopic,
   EnglishStoryItem,
-  HomeCustomModule,
   Language,
 } from '../../types';
 import { FirestoreService } from '../../firebase/firestoreService';
@@ -23,8 +22,6 @@ import {
   Sparkles,
   Layers,
   Settings,
-  Code,
-  ExternalLink,
 } from 'lucide-react';
 
 interface EnglishAdminViewProps {
@@ -40,7 +37,7 @@ interface EnglishAdminViewProps {
   storiesList: EnglishStoryItem[];
 }
 
-type TabType = 'vocab' | 'sentences' | 'spelling' | 'mcq' | 'typing' | 'grammar' | 'stories' | 'custom_features';
+type TabType = 'vocab' | 'sentences' | 'spelling' | 'mcq' | 'typing' | 'grammar' | 'stories';
 
 export const EnglishAdminView: React.FC<EnglishAdminViewProps> = ({
   language,
@@ -56,24 +53,6 @@ export const EnglishAdminView: React.FC<EnglishAdminViewProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('vocab');
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
-
-  // Home Custom Modules state
-  const [customModulesList, setCustomModulesList] = useState<HomeCustomModule[]>([]);
-  const [newCustomTitle, setNewCustomTitle] = useState('');
-  const [newCustomTitleHi, setNewCustomTitleHi] = useState('');
-  const [newCustomSubtitle, setNewCustomSubtitle] = useState('');
-  const [newCustomIcon, setNewCustomIcon] = useState('📄');
-  const [newCustomBadge, setNewCustomBadge] = useState('NEW');
-  const [newCustomActionType, setNewCustomActionType] = useState<'code' | 'nested_buttons' | 'link' | 'notice'>('code');
-  const [newCustomActionTarget, setNewCustomActionTarget] = useState('');
-  const [newCustomCode, setNewCustomCode] = useState('');
-
-  useEffect(() => {
-    const unsub = FirestoreService.subscribeHomeCustomModules((list) => {
-      setCustomModulesList(list);
-    });
-    return () => unsub();
-  }, []);
 
   // Form states for each tab
   // 1. Vocab form
@@ -369,42 +348,7 @@ export const EnglishAdminView: React.FC<EnglishAdminViewProps> = ({
     showNotification('🗑️ कहानी हटाई गई');
   };
 
-  const handleAddCustomModule = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newCustomTitle.trim()) return;
-
-    const item: HomeCustomModule = {
-      id: `mod-${Date.now()}`,
-      title: newCustomTitle.trim(),
-      titleHi: newCustomTitleHi.trim() || newCustomTitle.trim(),
-      subtitle: newCustomSubtitle.trim() || 'Custom Feature',
-      subtitleHi: newCustomSubtitle.trim() || 'कस्टम ऐप फीचर',
-      icon: newCustomIcon.trim() || '📄',
-      badge: newCustomBadge.trim() || undefined,
-      actionType: newCustomActionType,
-      actionTarget: newCustomActionTarget.trim() || undefined,
-      contentCode: newCustomCode,
-      order: customModulesList.length + 1,
-      active: true,
-      createdAt: new Date().toISOString(),
-    };
-
-    await FirestoreService.saveHomeCustomModule(item);
-    setNewCustomTitle('');
-    setNewCustomTitleHi('');
-    setNewCustomSubtitle('');
-    setNewCustomCode('');
-    setNewCustomActionTarget('');
-    showNotification(`✅ नया बटन व फीचर "${item.title}" होम स्क्रीन पर जोड़ा गया!`);
-  };
-
-  const handleDeleteCustomModule = async (id: string) => {
-    await FirestoreService.deleteHomeCustomModule(id);
-    showNotification('🗑️ होम स्क्रीन बटन हटा दिया गया');
-  };
-
   const tabs: { id: TabType; label: string; count: number }[] = [
-    { id: 'custom_features', label: '⚡ Home Custom Buttons', count: customModulesList.length },
     { id: 'vocab', label: 'शब्द (Vocab)', count: vocabList.length },
     { id: 'sentences', label: 'वाक्य (Sentences)', count: sentencesList.length },
     { id: 'spelling', label: 'कठिन शब्द (Spelling)', count: spellingList.length },
@@ -417,7 +361,7 @@ export const EnglishAdminView: React.FC<EnglishAdminViewProps> = ({
   return (
     <div className="space-y-4">
       {/* Top Header */}
-      <div className="flex items-center justify-between bg-slate-900 text-white p-3.5 rounded-2xl shadow-sm">
+      <div className="flex items-center justify-between bg-slate-900 text-white p-3.5 rounded-2xl shadow-sm gap-2">
         <div className="flex items-center gap-2">
           <button
             onClick={() => {
@@ -438,6 +382,21 @@ export const EnglishAdminView: React.FC<EnglishAdminViewProps> = ({
             </p>
           </div>
         </div>
+
+        <button
+          onClick={async () => {
+            if (window.confirm('क्या आप फ़ायरबेस का संपूर्ण डेटा साफ़ करके केवल मूल (Original Clean Data) रिसेट करना चाहते हैं?')) {
+              const ok = await FirestoreService.resetAllEnglishDataInFirebase();
+              if (ok) {
+                showNotification('✨ फ़ायरबेस का संपूर्ण डेटा मूल (Original Clean) सेट में रिसेट हो गया है!');
+              }
+            }
+          }}
+          type="button"
+          className="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-[11px] rounded-xl cursor-pointer active:scale-95 transition-all shrink-0 shadow-sm"
+        >
+          🔄 रिसेट ओरिजिनल डेटा
+        </button>
       </div>
 
       {/* Notification Toast */}
@@ -474,269 +433,6 @@ export const EnglishAdminView: React.FC<EnglishAdminViewProps> = ({
           </button>
         ))}
       </div>
-
-      {/* TAB 0: HOME CUSTOM BUTTONS & CODE FEATURES */}
-      {activeTab === 'custom_features' && (
-        <div className="space-y-4">
-          <form onSubmit={handleAddCustomModule} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
-            <h3 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-              <Plus className="w-4 h-4 text-indigo-600" />
-              <span>होम स्क्रीन पर नया बटन व फ़ीचर जोड़ें (Add Home Screen Feature)</span>
-            </h3>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Button Title (EN) *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Resume Builder"
-                  value={newCustomTitle}
-                  onChange={(e) => setNewCustomTitle(e.target.value)}
-                  className="w-full text-xs p-2 border border-slate-200 rounded-xl focus:border-indigo-500 focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Button Title (HI)</label>
-                <input
-                  type="text"
-                  placeholder="e.g. रिज्यूमे बिल्डर"
-                  value={newCustomTitleHi}
-                  onChange={(e) => setNewCustomTitleHi(e.target.value)}
-                  className="w-full text-xs p-2 border border-slate-200 rounded-xl focus:border-indigo-500 focus:outline-none"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Subtitle (सब-टाइटल)</label>
-              <input
-                type="text"
-                placeholder="e.g. 2 मिनट में प्रोफेशनल CV/Resume तैयार करें"
-                value={newCustomSubtitle}
-                onChange={(e) => setNewCustomSubtitle(e.target.value)}
-                className="w-full text-xs p-2 border border-slate-200 rounded-xl focus:border-indigo-500 focus:outline-none"
-              />
-            </div>
-
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Icon / Emoji</label>
-                <input
-                  type="text"
-                  placeholder="📄 or 📝 or 🧮"
-                  value={newCustomIcon}
-                  onChange={(e) => setNewCustomIcon(e.target.value)}
-                  className="w-full text-xs p-2 border border-slate-200 rounded-xl focus:border-indigo-500 focus:outline-none text-center"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Badge Tag</label>
-                <input
-                  type="text"
-                  placeholder="NEW or HOT or PRO"
-                  value={newCustomBadge}
-                  onChange={(e) => setNewCustomBadge(e.target.value)}
-                  className="w-full text-xs p-2 border border-slate-200 rounded-xl focus:border-indigo-500 focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Feature Type</label>
-                <select
-                  value={newCustomActionType}
-                  onChange={(e) => setNewCustomActionType(e.target.value as any)}
-                  className="w-full text-xs p-2 border border-slate-200 rounded-xl bg-white focus:border-indigo-500 focus:outline-none font-bold text-indigo-900"
-                >
-                  <option value="code">💻 Custom Code / HTML (e.g. Resume Maker)</option>
-                  <option value="nested_buttons">📂 Nested Sub-Buttons Panel</option>
-                  <option value="link">🔗 External Web Link</option>
-                  <option value="notice">📢 Popup Card Notice</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Quick Code Templates Bar for 1-click feature insertion */}
-            {newCustomActionType === 'code' && (
-              <div className="p-3 bg-indigo-50/80 rounded-xl border border-indigo-100 space-y-2">
-                <span className="text-[10px] font-bold text-indigo-900 block flex items-center gap-1">
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>1-Click Sample Code Templates (रेडीमेड फ़ीचर कोड पेस्ट करें):</span>
-                </span>
-                <div className="flex flex-wrap gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setNewCustomTitle('Resume Maker');
-                      setNewCustomTitleHi('रिज्यूमे मेकर');
-                      setNewCustomSubtitle('2 मिनट में CV/Resume बनाकर प्रिंट करें');
-                      setNewCustomIcon('📄');
-                      setNewCustomBadge('HOT');
-                      setNewCustomCode(`<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:16px;">
-  <div style="background:linear-gradient(to right, #3b82f6, #4f46e5);color:white;padding:16px;border-radius:16px;text-align:center;margin-bottom:16px;">
-    <h2 style="margin:0;font-size:20px;">📄 Professional Resume Builder</h2>
-    <p style="margin:4px 0 0;font-size:12px;opacity:0.9;">अपनी डिटेल्स भरें और प्रिंट/PDF सेव करें</p>
-  </div>
-  <div style="background:white;padding:16px;border-radius:16px;border:1px solid #e2e8f0;display:flex;flex-direction:column;gap:10px;">
-    <div>
-      <label style="font-size:11px;font-weight:bold;color:#475569;display:block;">पूरा नाम (Full Name)</label>
-      <input id="rName" type="text" placeholder="e.g. Rahul Sharma" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;box-sizing:border-box;" />
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-      <div>
-        <label style="font-size:11px;font-weight:bold;color:#475569;display:block;">मोबाइल नंबर</label>
-        <input id="rPhone" type="text" placeholder="+91 9876543210" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;box-sizing:border-box;" />
-      </div>
-      <div>
-        <label style="font-size:11px;font-weight:bold;color:#475569;display:block;">ईमेल</label>
-        <input id="rEmail" type="text" placeholder="rahul@example.com" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;box-sizing:border-box;" />
-      </div>
-    </div>
-    <div>
-      <label style="font-size:11px;font-weight:bold;color:#475569;display:block;">करियर उद्देश्य (Objective)</label>
-      <textarea id="rObj" rows="2" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;box-sizing:border-box;">To work in a progressive organization where I can apply my skills.</textarea>
-    </div>
-    <div>
-      <label style="font-size:11px;font-weight:bold;color:#475569;display:block;">शैक्षणिक योग्यता (Education)</label>
-      <input id="rEdu" type="text" placeholder="B.Sc / B.Com / 12th Pass from XYZ College" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;box-sizing:border-box;" />
-    </div>
-    <div>
-      <label style="font-size:11px;font-weight:bold;color:#475569;display:block;">मुख्य स्किल्स (Skills)</label>
-      <input id="rSkills" type="text" placeholder="Computer Basic, English Typing, MS Office" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;box-sizing:border-box;" />
-    </div>
-    <button onclick="makeCv()" style="width:100%;padding:10px;background:#4f46e5;color:white;border:none;border-radius:10px;font-weight:bold;font-size:12px;cursor:pointer;">
-      ⚡ जनरेट करें & प्रिंट करें (Generate Resume)
-    </button>
-  </div>
-  <div id="cvOut" style="display:none;margin-top:16px;background:white;padding:24px;border-radius:16px;border:2px solid #cbd5e1;">
-    <h1 id="cvName" style="margin:0;font-size:22px;color:#1e1b4b;border-bottom:2px solid #4f46e5;padding-bottom:4px;text-transform:uppercase;"></h1>
-    <p id="cvCont" style="font-size:11px;color:#64748b;margin:4px 0 16px;"></p>
-    <h3 style="font-size:12px;color:#4f46e5;margin:8px 0 4px;text-transform:uppercase;">OBJECTIVE</h3>
-    <p id="cvObjP" style="font-size:12px;color:#334155;margin:0;"></p>
-    <h3 style="font-size:12px;color:#4f46e5;margin:12px 0 4px;text-transform:uppercase;">EDUCATION</h3>
-    <p id="cvEduP" style="font-size:12px;color:#334155;margin:0;font-weight:bold;"></p>
-    <h3 style="font-size:12px;color:#4f46e5;margin:12px 0 4px;text-transform:uppercase;">SKILLS</h3>
-    <p id="cvSkillsP" style="font-size:12px;color:#334155;margin:0;"></p>
-    <button onclick="window.print()" style="margin-top:16px;width:100%;padding:10px;background:#059669;color:white;border:none;border-radius:10px;font-weight:bold;cursor:pointer;">
-      🖨️ प्रिंट करें / Save PDF
-    </button>
-  </div>
-  <script>
-    function makeCv() {
-      document.getElementById('cvName').innerText = document.getElementById('rName').value || 'NAME';
-      document.getElementById('cvCont').innerText = 'Phone: ' + (document.getElementById('rPhone').value || 'N/A') + ' | Email: ' + (document.getElementById('rEmail').value || 'N/A');
-      document.getElementById('cvObjP').innerText = document.getElementById('rObj').value || 'N/A';
-      document.getElementById('cvEduP').innerText = document.getElementById('rEdu').value || 'N/A';
-      document.getElementById('cvSkillsP').innerText = document.getElementById('rSkills').value || 'N/A';
-      document.getElementById('cvOut').style.display = 'block';
-    }
-  </script>
-</div>`);
-                    }}
-                    className="px-2 py-1 bg-white hover:bg-indigo-100 text-indigo-900 border border-indigo-200 rounded-lg text-[10px] font-bold cursor-pointer"
-                  >
-                    📄 1. Resume Builder Template
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setNewCustomTitle('Quick Note Pad');
-                      setNewCustomTitleHi('क्विक नोट पैड');
-                      setNewCustomSubtitle('अध्ययन के लिए अपने नोट्स बनाकर रखें');
-                      setNewCustomIcon('📝');
-                      setNewCustomBadge('PRO');
-                      setNewCustomCode(`<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:12px;">
-  <h2 style="color:#1e293b;font-size:18px;margin:0 0 8px;">📝 Quick Study Notepad</h2>
-  <textarea id="myNote" rows="8" placeholder="Type your quick notes here..." style="width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:12px;font-size:13px;box-sizing:border-box;"></textarea>
-  <button onclick="localStorage.setItem('saved_note', document.getElementById('myNote').value);alert('Saved!')" style="margin-top:8px;width:100%;padding:10px;background:#2563eb;color:white;border:none;border-radius:10px;font-weight:bold;cursor:pointer;">
-    💾 Save Note
-  </button>
-  <script>
-    document.getElementById('myNote').value = localStorage.getItem('saved_note') || '';
-  </script>
-</div>`);
-                    }}
-                    className="px-2 py-1 bg-white hover:bg-indigo-100 text-indigo-900 border border-indigo-200 rounded-lg text-[10px] font-bold cursor-pointer"
-                  >
-                    📝 2. Quick Notepad Template
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {newCustomActionType === 'code' && (
-              <div>
-                <label className="text-[10px] font-bold text-slate-600 block mb-0.5">
-                  Paste Custom HTML / JS Code * (कोड यहाँ पेस्ट करें)
-                </label>
-                <textarea
-                  rows={6}
-                  required
-                  placeholder="Paste HTML/CSS/JS code for Resume Maker, Calculator, Flashcards or custom tool..."
-                  value={newCustomCode}
-                  onChange={(e) => setNewCustomCode(e.target.value)}
-                  className="w-full text-xs p-2.5 font-mono border border-slate-200 rounded-xl focus:border-indigo-500 focus:outline-none bg-slate-900 text-emerald-400"
-                />
-              </div>
-            )}
-
-            {newCustomActionType === 'link' && (
-              <div>
-                <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Target Web URL (https://...)</label>
-                <input
-                  type="url"
-                  placeholder="https://example.com"
-                  value={newCustomActionTarget}
-                  onChange={(e) => setNewCustomActionTarget(e.target.value)}
-                  className="w-full text-xs p-2 border border-slate-200 rounded-xl focus:border-indigo-500 focus:outline-none"
-                />
-              </div>
-            )}
-
-            <button
-              type="submit"
-              className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer active:scale-98 transition-all flex items-center justify-center gap-1.5"
-            >
-              <Plus className="w-4 h-4" />
-              <span>होम स्क्रीन पर बटन व फ़ीचर सेव करें (Save Home Button)</span>
-            </button>
-          </form>
-
-          {/* List of existing Home Custom Modules */}
-          <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-xs space-y-2">
-            <h4 className="text-xs font-bold text-slate-700 px-1">
-              मौजूदा होम स्क्रीन बटन ({customModulesList.length} बटन)
-            </h4>
-            <div className="divide-y divide-slate-100 max-h-80 overflow-y-auto">
-              {customModulesList.map((item) => (
-                <div key={item.id} className="py-2.5 px-2 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2.5">
-                    <span className="text-2xl">{item.icon || '📄'}</span>
-                    <div className="text-xs">
-                      <span className="font-bold text-slate-900 block">
-                        {item.title} ({item.titleHi})
-                      </span>
-                      <span className="text-slate-500 text-[10px] font-medium block">
-                        {item.subtitle}
-                      </span>
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 bg-indigo-100 text-indigo-800 rounded-md inline-block mt-0.5">
-                        {item.actionType === 'code' ? '💻 Custom HTML Code' : item.actionType}
-                      </span>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleDeleteCustomModule(item.id)}
-                    className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg cursor-pointer shrink-0"
-                    title="हटाएं"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* TAB 1: VOCABULARY */}
       {activeTab === 'vocab' && (

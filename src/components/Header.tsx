@@ -36,8 +36,8 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-gradient-to-r from-blue-900 via-blue-800 to-indigo-900 text-white shadow-md">
-      <div className="max-w-md mx-auto px-3 sm:px-4 py-2 flex items-center justify-between gap-2">
+    <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 text-slate-100 shadow-xl">
+      <div className="max-w-md mx-auto px-3 sm:px-4 py-2.5 flex items-center justify-between gap-2">
         {/* Left Side Navigation Controls */}
         <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
           {currentSection !== 'menu' ? (
