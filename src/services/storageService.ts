@@ -196,5 +196,34 @@ export const StorageService = {
     } catch {
       // ignore
     }
+  },
+
+  getSeenEnglishQuestions(): Set<string> {
+    try {
+      const data = localStorage.getItem('studybull_seen_english_questions_v2');
+      if (data) {
+        const arr = JSON.parse(data);
+        if (Array.isArray(arr)) return new Set(arr);
+      }
+    } catch {
+      // ignore
+    }
+    return new Set();
+  },
+
+  addSeenEnglishQuestion(key: string): void {
+    if (!key || !key.trim()) return;
+    try {
+      const set = this.getSeenEnglishQuestions();
+      const normKey = key.trim().toLowerCase();
+      if (!set.has(normKey)) {
+        set.add(normKey);
+        const arr = Array.from(set);
+        if (arr.length > 5000) arr.splice(0, arr.length - 4000);
+        localStorage.setItem('studybull_seen_english_questions_v2', JSON.stringify(arr));
+      }
+    } catch {
+      // ignore
+    }
   }
 };

@@ -21,6 +21,8 @@ interface EnglishVocabViewProps {
   onMarkLearned: (id: string) => void;
 }
 
+import { StorageService } from '../../services/storageService';
+
 export const EnglishVocabView: React.FC<EnglishVocabViewProps> = ({
   vocabList,
   language,
@@ -42,9 +44,10 @@ export const EnglishVocabView: React.FC<EnglishVocabViewProps> = ({
     return matchesLevel && matchesSearch;
   });
 
-  const handleToggleLearn = (id: string) => {
+  const handleToggleLearn = (item: EnglishVocabItem) => {
     playCorrectSound(soundEnabled);
-    onMarkLearned(id);
+    StorageService.addSeenEnglishQuestion(item.word || item.id);
+    onMarkLearned(item.id);
   };
 
   return (
@@ -184,7 +187,7 @@ export const EnglishVocabView: React.FC<EnglishVocabViewProps> = ({
               {/* Mark as Learned Toggle Button */}
               <div className="pt-1 flex items-center justify-between border-t border-slate-100">
                 <button
-                  onClick={() => handleToggleLearn(item.id)}
+                  onClick={() => handleToggleLearn(item)}
                   className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer ${
                     isLearned
                       ? 'bg-emerald-600 text-white shadow-xs'

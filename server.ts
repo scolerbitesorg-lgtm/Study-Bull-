@@ -15,6 +15,7 @@ app.use(express.json({ limit: '10mb' }));
 
 let cachedGroqModel: string | null = null;
 let groqCooldownUntil: number = 0;
+let geminiCooldownUntil: number = 0;
 
 async function getBestGroqModel(apiKey: string): Promise<string> {
   if (cachedGroqModel) return cachedGroqModel;
@@ -27,14 +28,14 @@ async function getBestGroqModel(apiKey: string): Promise<string> {
       const data = await res.json();
       const modelIds: string[] = (data.data || []).map((m: any) => m.id);
 
-      // Prioritize fast, high-rate-limit models (20B/27B) over heavy 120B
+      // Prioritize fast, reliable models that fully support JSON object mode
       const preferences = [
-        'openai/gpt-oss-20b',
-        'qwen/qwen3.8-27b',
-        'openai/gpt-oss-120b',
-        'llama-3.1-8b-instant',
         'llama-3.3-70b-versatile',
-        'allam-2-7b',
+        'llama-3.1-8b-instant',
+        'llama3-70b-8192',
+        'llama3-8b-8192',
+        'mixtral-8x7b-32768',
+        'gemma2-9b-it',
       ];
 
       for (const pref of preferences) {
@@ -56,7 +57,7 @@ async function getBestGroqModel(apiKey: string): Promise<string> {
     console.warn('Could not query Groq /models list, falling back to default:', err);
   }
 
-  return 'openai/gpt-oss-20b';
+  return 'llama-3.3-70b-versatile';
 }
 
 // Helper to call Groq API (High-speed Llama / GPT models)
@@ -71,56 +72,104 @@ async function callGroqApi(systemPrompt: string, userPrompt: string, maxTokens: 
   }
 
   const model = await getBestGroqModel(apiKey);
+  const jsonSystemPrompt = `${systemPrompt}\nIMPORTANT: You MUST output a valid JSON object. Do NOT output markdown ticks or extraneous text outside the JSON object.`;
 
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.6,
-      max_tokens: maxTokens,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      response_format: { type: 'json_object' },
-    }),
-  });
+  try {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.5,
+        max_tokens: maxTokens,
+        messages: [
+          { role: 'system', content: jsonSystemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        response_format: { type: 'json_object' },
+      }),
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    if (response.status === 429) {
-      groqCooldownUntil = Date.now() + 20000;
+    if (!response.ok) {
+      const errorText = await response.text();
+      if (response.status === 429) {
+        groqCooldownUntil = Date.now() + 20000;
+      }
+      cachedGroqModel = null;
+
+      // Handle 400 json_validate_failed by retrying with llama-3.3-70b-versatile without response_format
+      if (response.status === 400 || errorText.includes('json_validate_failed')) {
+        console.warn('Groq json_validate_failed, retrying with llama-3.3-70b-versatile...');
+        const retryResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: 'llama-3.3-70b-versatile',
+            temperature: 0.5,
+            max_tokens: maxTokens,
+            messages: [
+              { role: 'system', content: jsonSystemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+          }),
+        });
+
+        if (retryResponse.ok) {
+          const retryData = await retryResponse.json();
+          return retryData.choices?.[0]?.message?.content || '{}';
+        }
+      }
+
+      throw new Error(`Groq API Error (${response.status}): ${errorText}`);
     }
-    cachedGroqModel = null;
-    throw new Error(`Groq API Error (${response.status}): ${errorText}`);
-  }
 
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content || '{}';
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content || '{}';
+  } catch (err: any) {
+    cachedGroqModel = null;
+    throw err;
+  }
 }
 
-// Helper to call Gemini API as fallback
-async function callGeminiApi(systemPrompt: string, userPrompt: string): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY;
+// Helper to call Gemini API
+async function callGeminiApi(systemPrompt: string, userPrompt: string, customApiKey?: string): Promise<string> {
+  const apiKey = customApiKey || process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY is not configured in backend');
   }
 
-  const ai = new GoogleGenAI({ apiKey });
-  const response = await ai.models.generateContent({
-    model: 'gemini-3.8-flash',
-    contents: `${systemPrompt}\n\nTask:\n${userPrompt}`,
-    config: {
-      responseMimeType: 'application/json',
-      temperature: 0.7,
-    },
-  });
+  // If using default backend key and in cooldown, fail fast to allow Groq/built-in fallback
+  if (!customApiKey && Date.now() < geminiCooldownUntil) {
+    throw new Error('Gemini API is currently in quota rate-limit cooldown');
+  }
 
-  return response.text || '{}';
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: `${systemPrompt}\n\nTask:\n${userPrompt}`,
+      config: {
+        responseMimeType: 'application/json',
+        temperature: 0.7,
+      },
+    });
+
+    return response.text || '{}';
+  } catch (err: any) {
+    const errMsg = String(err?.message || err);
+    if (!customApiKey && (errMsg.includes('429') || errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('Quota exceeded'))) {
+      // Set 15 minute cooldown for backend Gemini key on quota exhaustion
+      geminiCooldownUntil = Date.now() + 15 * 60 * 1000;
+      console.warn('Gemini API quota exceeded. Switching to Groq/built-in fallback for 15 minutes.');
+    }
+    throw err;
+  }
 }
 
 // Fallback high-yield content generator if keys are absent
@@ -432,23 +481,23 @@ Each item must have:
     let rawJson = '';
     let provider = '';
 
-    // Priority 1: Groq API (High speed, respects rate-limit cooldown)
-    if (process.env.GROQ_API_KEY && Date.now() >= groqCooldownUntil) {
-      try {
-        rawJson = await callGroqApi(systemPrompt, userPrompt);
-        provider = 'groq';
-      } catch (err: any) {
-        // Fall back gracefully to Gemini
-      }
-    }
-
-    // Priority 2: Gemini API
-    if (!rawJson && process.env.GEMINI_API_KEY) {
+    // Priority 1: Gemini API (Official SDK, gemini-3.8-flash, fast & high capacity)
+    if (process.env.GEMINI_API_KEY) {
       try {
         rawJson = await callGeminiApi(systemPrompt, userPrompt);
         provider = 'gemini';
       } catch (err: any) {
-        // Fall back gracefully to built-in generator
+        console.warn('Gemini API call failed, falling back to Groq:', err.message);
+      }
+    }
+
+    // Priority 2: Groq API fallback
+    if (!rawJson && process.env.GROQ_API_KEY && Date.now() >= groqCooldownUntil) {
+      try {
+        rawJson = await callGroqApi(systemPrompt, userPrompt);
+        provider = 'groq';
+      } catch (err: any) {
+        console.warn('Groq API call failed:', err.message);
       }
     }
 
@@ -612,23 +661,23 @@ CRITICAL FORMATTING INSTRUCTIONS:
       }
     }
 
-    // 2. If no rawJson yet, try server GROQ_API_KEY
+    // 2. Try server GEMINI_API_KEY (Official SDK)
+    if (!rawJson && process.env.GEMINI_API_KEY) {
+      try {
+        rawJson = await callGeminiApi(systemPrompt, userPrompt);
+        provider = 'server-gemini';
+      } catch (err: any) {
+        console.warn('Math Gemini API failed, trying Groq fallback:', err.message);
+      }
+    }
+
+    // 3. Fallback to server GROQ_API_KEY if needed
     if (!rawJson && process.env.GROQ_API_KEY && Date.now() >= groqCooldownUntil) {
       try {
         rawJson = await callGroqApi(systemPrompt, userPrompt, 1500);
         provider = 'server-groq';
       } catch {
-        // Fall back gracefully to Gemini
-      }
-    }
-
-    // 3. If no rawJson yet, try server GEMINI_API_KEY
-    if (!rawJson && process.env.GEMINI_API_KEY) {
-      try {
-        rawJson = await callGeminiApi(systemPrompt, userPrompt);
-        provider = 'server-gemini';
-      } catch {
-        // Fall back gracefully to built-in generator
+        // Fall back gracefully
       }
     }
 
@@ -745,6 +794,86 @@ function generateAlgorithmicMathQuestions(count: number, level: string, op: stri
   }
   return list;
 }
+
+// Endpoint for generating live Quiz/Mock MCQs for any exam, subject, or topic using Gemini API
+app.post('/api/ai/generate-quiz-questions', async (req, res) => {
+  try {
+    const { examId = 'cgl', subjectId = 'gk', topicId = 'general', count = 10, existingQuestions = [] } = req.body;
+    const aiCount = Math.min(Math.max(Number(count) || 10, 5), 25);
+
+    const systemPrompt = `You are a premier question setter for Indian competitive exams (SSC CGL, CHSL, MTS, Delhi Police, CPO SI, Railway, Banking).
+Generate pristine, accurate, realistic MCQs in Hindi and English.
+Output MUST be pure valid JSON with a root key "questions" containing an array of objects.
+Do NOT repeat any questions in this list: ${JSON.stringify(existingQuestions.slice(0, 30))}.`;
+
+    const userPrompt = `Generate ${aiCount} high quality MCQs for Exam "${examId}", Subject "${subjectId}", Topic "${topicId}".
+Each question object MUST have:
+- "id": string unique id
+- "subjectId": "${subjectId}"
+- "topicId": "${topicId}"
+- "textHi": Question in Hindi
+- "textEn": Question in English
+- "optionsHi": Array of 4 options in Hindi
+- "optionsEn": Array of 4 options in English
+- "correctIndex": Integer (0, 1, 2, or 3)
+- "explanationHi": Comprehensive explanation in Hindi with key concepts
+- "explanationEn": Explanation in English
+- "examTag": "${examId.toUpperCase()}"
+- "difficulty": "medium"`;
+
+    let rawJson = '';
+    if (process.env.GEMINI_API_KEY) {
+      try {
+        rawJson = await callGeminiApi(systemPrompt, userPrompt);
+      } catch (err: any) {
+        console.warn('Quiz Gemini generation failed, trying Groq fallback:', err.message);
+      }
+    }
+
+    if (!rawJson && process.env.GROQ_API_KEY && Date.now() >= groqCooldownUntil) {
+      try {
+        rawJson = await callGroqApi(systemPrompt, userPrompt);
+      } catch {
+        // ignore
+      }
+    }
+
+    let questions: any[] = [];
+    if (rawJson) {
+      try {
+        const cleaned = rawJson.replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
+        const parsed = JSON.parse(cleaned);
+        questions = Array.isArray(parsed) ? parsed : parsed.questions || parsed.items || [];
+      } catch (jsonErr) {
+        console.error('Failed to parse quiz questions JSON:', jsonErr);
+      }
+    }
+
+    const timestamp = Date.now();
+    const finalQuestions = questions.map((q, idx) => ({
+      ...q,
+      id: q.id || `quiz-gen-${timestamp}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+      subjectId,
+      topicId,
+      questionHi: q.questionHi || q.textHi || 'प्रश्न उपलब्ध कराया गया है।',
+      questionEn: q.questionEn || q.textEn || 'Question details.',
+      optionsHi: Array.isArray(q.optionsHi) ? q.optionsHi : (Array.isArray(q.options) ? q.options : ['Option A', 'Option B', 'Option C', 'Option D']),
+      optionsEn: Array.isArray(q.optionsEn) ? q.optionsEn : (Array.isArray(q.options) ? q.options : ['Option A', 'Option B', 'Option C', 'Option D']),
+      correctIndex: typeof q.correctIndex === 'number' ? q.correctIndex : 0,
+      explanationHi: q.explanationHi || q.explanation || 'सटीक उत्तर व अवधारणा का विवरण।',
+      explanationEn: q.explanationEn || q.explanation || 'Detailed concept explanation.',
+    }));
+
+    res.json({
+      success: true,
+      count: finalQuestions.length,
+      questions: finalQuestions,
+    });
+  } catch (err: any) {
+    console.error('Quiz Generation Error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 // Status endpoint for frontend health check
 app.get('/api/ai/status', (req, res) => {

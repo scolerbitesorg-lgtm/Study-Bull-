@@ -19,6 +19,8 @@ interface EnglishSentencesViewProps {
   onRecordPractice: () => void;
 }
 
+import { StorageService } from '../../services/storageService';
+
 export const EnglishSentencesView: React.FC<EnglishSentencesViewProps> = ({
   sentences,
   language,
@@ -33,6 +35,8 @@ export const EnglishSentencesView: React.FC<EnglishSentencesViewProps> = ({
   const [practiceFeedback, setPracticeFeedback] = useState<{ correct: boolean; message: string } | null>(null);
   const [practicedIds, setPracticedIds] = useState<Set<string>>(new Set());
 
+  const seenSet = StorageService.getSeenEnglishQuestions();
+
   const filtered = sentences.filter((s) => {
     const matchesLevel = selectedLevel === 'all' || s.level === selectedLevel;
     const matchesSearch =
@@ -41,12 +45,19 @@ export const EnglishSentencesView: React.FC<EnglishSentencesViewProps> = ({
       s.hindi.includes(search) ||
       s.situation.toLowerCase().includes(search.toLowerCase());
     return matchesLevel && matchesSearch;
+  }).sort((a, b) => {
+    const aSeen = seenSet.has((a.english || a.id).toLowerCase());
+    const bSeen = seenSet.has((b.english || b.id).toLowerCase());
+    if (aSeen === bSeen) return 0;
+    return aSeen ? 1 : -1;
   });
 
   const handlePracticeSubmit = (sentence: EnglishSentenceItem) => {
     if (!userPracticeAnswer.trim()) return;
     const cleanUser = userPracticeAnswer.trim().toLowerCase().replace(/[.,!?'"]/g, '');
     const cleanTarget = sentence.english.toLowerCase().replace(/[.,!?'"]/g, '');
+
+    StorageService.addSeenEnglishQuestion(sentence.english || sentence.id);
 
     const isMatch = cleanUser === cleanTarget;
     if (isMatch) {

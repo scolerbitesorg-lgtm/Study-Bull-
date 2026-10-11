@@ -23,6 +23,7 @@ import {
   EnglishSentenceTypingItem,
   EnglishGrammarTopic,
   EnglishStoryItem,
+  HomeCustomModule,
 } from '../types';
 import {
   EXAM_CATEGORIES,
@@ -333,14 +334,48 @@ export const FirestoreService = {
     const colRef = collection(db, 'englishMcq');
     return onSnapshot(
       colRef,
-      (snapshot) => {
+      async (snapshot) => {
         if (snapshot.empty) {
           this.seedEnglishMcq();
           callback(DEFAULT_ENGLISH_MCQ);
         } else {
-          const list: EnglishMcqItem[] = [];
-          snapshot.forEach((snap) => list.push(snap.data() as EnglishMcqItem));
-          callback(list.length > 0 ? list : DEFAULT_ENGLISH_MCQ);
+          const rawList: { id: string; data: EnglishMcqItem }[] = [];
+          snapshot.forEach((snap) => {
+            const data = snap.data() as EnglishMcqItem;
+            rawList.push({ id: snap.id, data: { ...data, id: snap.id } });
+          });
+
+          // Deduplicate by question text (hindiSentence) or options
+          const seenKeys = new Set<string>();
+          const uniqueList: EnglishMcqItem[] = [];
+          const duplicateDocIdsToDelete: string[] = [];
+
+          for (const item of rawList) {
+            const sentenceKey = (item.data.hindiSentence || '').trim().toLowerCase();
+            const optionsKey = (item.data.options || []).join('|').trim().toLowerCase();
+            const normKey = sentenceKey ? sentenceKey : optionsKey;
+
+            if (normKey && seenKeys.has(normKey)) {
+              // Found duplicate document in Firebase
+              duplicateDocIdsToDelete.push(item.id);
+            } else {
+              if (normKey) seenKeys.add(normKey);
+              uniqueList.push(item.data);
+            }
+          }
+
+          // Delete duplicate documents from Firebase in background
+          if (duplicateDocIdsToDelete.length > 0) {
+            for (const dupId of duplicateDocIdsToDelete) {
+              try {
+                await deleteDoc(doc(db, 'englishMcq', dupId));
+              } catch (e) {
+                console.warn('Silent cleanup of duplicate document failed:', dupId, e);
+              }
+            }
+          }
+
+          callback(uniqueList.length > 0 ? uniqueList : DEFAULT_ENGLISH_MCQ);
         }
       },
       (error) => {
@@ -512,6 +547,47 @@ export const FirestoreService = {
   async deleteEnglishMcq(id: string) {
     await deleteDoc(doc(db, 'englishMcq', id));
   },
+  async cleanDuplicateMcqsFromFirebase() {
+    try {
+      const colRef = collection(db, 'englishMcq');
+      const snapshot = await getDocs(colRef);
+      const seen = new Set<string>();
+      let removedCount = 0;
+
+      for (const snapDoc of snapshot.docs) {
+        const data = snapDoc.data() as EnglishMcqItem;
+        const key = (data.hindiSentence || data.id || '').trim().toLowerCase();
+        if (key && seen.has(key)) {
+          await deleteDoc(doc(db, 'englishMcq', snapDoc.id));
+          removedCount++;
+        } else if (key) {
+          seen.add(key);
+        }
+      }
+      return removedCount;
+    } catch (e) {
+      handleFirestoreError(e, OperationType.DELETE, 'englishMcq');
+      return 0;
+    }
+  },
+  async resetCleanEnglishMcq() {
+    try {
+      // 1. Delete existing docs in englishMcq collection
+      const colRef = collection(db, 'englishMcq');
+      const snapshot = await getDocs(colRef);
+      for (const snapDoc of snapshot.docs) {
+        await deleteDoc(doc(db, 'englishMcq', snapDoc.id));
+      }
+      // 2. Re-seed default clean unique set
+      for (const item of DEFAULT_ENGLISH_MCQ) {
+        await setDoc(doc(db, 'englishMcq', item.id), item);
+      }
+      return true;
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, 'englishMcq');
+      return false;
+    }
+  },
 
   async saveEnglishTypingSentence(item: EnglishSentenceTypingItem) {
     await setDoc(doc(db, 'englishTyping', item.id), item);
@@ -532,5 +608,34 @@ export const FirestoreService = {
   },
   async deleteEnglishStory(id: string) {
     await deleteDoc(doc(db, 'englishStories', id));
+  },
+
+  subscribeHomeCustomModules(callback: (list: HomeCustomModule[]) => void) {
+    const colRef = collection(db, 'homeCustomModules');
+    return onSnapshot(
+      colRef,
+      (snapshot) => {
+        const list: HomeCustomModule[] = [];
+        snapshot.forEach((snap) => {
+          const data = snap.data() as HomeCustomModule;
+          if (data.active !== false) {
+            list.push(data);
+          }
+        });
+        list.sort((a, b) => (a.order || 0) - (b.order || 0));
+        callback(list);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, 'homeCustomModules');
+        callback([]);
+      }
+    );
+  },
+
+  async saveHomeCustomModule(item: HomeCustomModule) {
+    await setDoc(doc(db, 'homeCustomModules', item.id), item);
+  },
+  async deleteHomeCustomModule(id: string) {
+    await deleteDoc(doc(db, 'homeCustomModules', id));
   },
 };

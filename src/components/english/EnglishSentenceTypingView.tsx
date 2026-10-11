@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { EnglishSentenceTypingItem, EnglishProficiencyLevel, Language, UserWrongAnswerItem } from '../../types';
 import { playTapSound, playCorrectSound, playWrongSound } from '../../utils/audio';
+import { StorageService } from '../../services/storageService';
 import { 
   ArrowLeft, 
   Check, 
@@ -9,7 +10,9 @@ import {
   Trophy,
   RotateCcw,
   Keyboard,
-  Lightbulb
+  Lightbulb,
+  Sparkles,
+  BookOpen
 } from 'lucide-react';
 
 interface EnglishSentenceTypingViewProps {
@@ -22,7 +25,14 @@ interface EnglishSentenceTypingViewProps {
   onSilentReplenish?: () => void;
 }
 
-type QuestionCountOption = 5 | 10 | 15 | 20 | 'infinite';
+function shuffleArray<T>(arr: T[]): T[] {
+  const result = [...arr];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
 
 export const EnglishSentenceTypingView: React.FC<EnglishSentenceTypingViewProps> = ({
   typingList,
@@ -33,12 +43,12 @@ export const EnglishSentenceTypingView: React.FC<EnglishSentenceTypingViewProps>
   onSuccess,
   onSilentReplenish,
 }) => {
-  // Setup configuration state
+  // Topic / Test selection state
   const [isPracticeActive, setIsPracticeActive] = useState(false);
-  const [selectedCount, setSelectedCount] = useState<QuestionCountOption>(10);
-  const [selectedLevel, setSelectedLevel] = useState<EnglishProficiencyLevel | 'all'>('all');
+  const [selectedTopic, setSelectedTopic] = useState<EnglishProficiencyLevel | 'all'>('all');
 
   // Active session state
+  const [sessionQueue, setSessionQueue] = useState<EnglishSentenceTypingItem[]>([]);
   const [sessionIndex, setSessionIndex] = useState(0);
   const [userTyped, setUserTyped] = useState('');
   const [isAnswered, setIsAnswered] = useState(false);
@@ -47,21 +57,56 @@ export const EnglishSentenceTypingView: React.FC<EnglishSentenceTypingViewProps>
   const [sessionWrong, setSessionWrong] = useState(0);
   const [isCompleted, setIsCompleted] = useState(false);
 
-  // Filter pool based on level
-  const filtered = typingList.filter(
-    (item) => selectedLevel === 'all' || item.level === selectedLevel
-  );
+  // Filter pool based on topic
+  const filteredPool = useMemo(() => {
+    return typingList.filter(
+      (item) => selectedTopic === 'all' || item.level === selectedTopic
+    );
+  }, [typingList, selectedTopic]);
 
-  const currentItem: EnglishSentenceTypingItem | undefined = filtered[sessionIndex % (filtered.length || 1)];
-
-  // Silent background replenishment when pool gets used
-  useEffect(() => {
-    if (isPracticeActive && onSilentReplenish) {
-      if (sessionIndex >= filtered.length - 2 || selectedCount === 'infinite') {
-        onSilentReplenish();
+  // Build/refresh session queue prioritizing unseen questions randomly
+  const buildSessionQueue = (pool: EnglishSentenceTypingItem[]) => {
+    const uniqueMap = new Map<string, EnglishSentenceTypingItem>();
+    for (const item of pool) {
+      const key = (item.targetEnglish || item.hindiSentence || item.id || '').trim().toLowerCase();
+      if (!uniqueMap.has(key)) {
+        uniqueMap.set(key, item);
       }
     }
-  }, [sessionIndex, isPracticeActive, filtered.length, selectedCount, onSilentReplenish]);
+    const cleanPool = Array.from(uniqueMap.values());
+
+    const seenSet = StorageService.getSeenEnglishQuestions();
+    const unseen: EnglishSentenceTypingItem[] = [];
+    const seen: EnglishSentenceTypingItem[] = [];
+
+    for (const item of cleanPool) {
+      const key = (item.targetEnglish || item.hindiSentence || item.id || '').trim().toLowerCase();
+      if (seenSet.has(key)) {
+        seen.push(item);
+      } else {
+        unseen.push(item);
+      }
+    }
+
+    const shuffledUnseen = shuffleArray(unseen);
+    const shuffledSeen = shuffleArray(seen);
+    return [...shuffledUnseen, ...shuffledSeen];
+  };
+
+  const currentItem: EnglishSentenceTypingItem | undefined =
+    sessionQueue.length > 0
+      ? sessionQueue[sessionIndex % sessionQueue.length]
+      : filteredPool[0];
+
+  // Mark current question as seen persistently so it doesn't repeat
+  useEffect(() => {
+    if (isPracticeActive && currentItem) {
+      const key = currentItem.targetEnglish || currentItem.hindiSentence || currentItem.id;
+      if (key) {
+        StorageService.addSeenEnglishQuestion(key);
+      }
+    }
+  }, [isPracticeActive, currentItem]);
 
   const cleanString = (str: string) => {
     return str
@@ -71,8 +116,15 @@ export const EnglishSentenceTypingView: React.FC<EnglishSentenceTypingViewProps>
       .replace(/\s+/g, ' ');
   };
 
-  const handleStartPractice = () => {
+  const handleStartTest = (level: EnglishProficiencyLevel | 'all') => {
     playTapSound(soundEnabled);
+    setSelectedTopic(level);
+
+    const pool = typingList.filter((item) => level === 'all' || item.level === level);
+    const poolToUse = pool.length > 0 ? pool : typingList;
+
+    const queue = buildSessionQueue(poolToUse);
+    setSessionQueue(queue);
     setSessionIndex(0);
     setUserTyped('');
     setIsAnswered(false);
@@ -89,11 +141,12 @@ export const EnglishSentenceTypingView: React.FC<EnglishSentenceTypingViewProps>
 
     const cleanInput = cleanString(userTyped);
     const cleanTarget = cleanString(currentItem.targetEnglish);
-    const matchesAccepted = currentItem.acceptedVariations.some(
+    const matchesAccepted = (currentItem.acceptedVariations || []).some(
       (v) => cleanString(v) === cleanInput
     );
 
     const correct = cleanInput === cleanTarget || matchesAccepted;
+
     setIsAnswered(true);
     setIsCorrect(correct);
 
@@ -107,7 +160,7 @@ export const EnglishSentenceTypingView: React.FC<EnglishSentenceTypingViewProps>
       onRecordWrong({
         id: `wrong_type_${Date.now()}`,
         type: 'typing',
-        question: `Translation of: "${currentItem.hindiSentence}"`,
+        question: `Typing: "${currentItem.hindiSentence}"`,
         correctAnswer: currentItem.targetEnglish,
         userAnswer: userTyped.trim(),
         explanationHi: currentItem.grammarTipHi,
@@ -115,7 +168,6 @@ export const EnglishSentenceTypingView: React.FC<EnglishSentenceTypingViewProps>
       });
     }
 
-    // Trigger silent background replenishment on every answer so questions never run out
     if (onSilentReplenish) {
       onSilentReplenish();
     }
@@ -125,7 +177,7 @@ export const EnglishSentenceTypingView: React.FC<EnglishSentenceTypingViewProps>
     playTapSound(soundEnabled);
 
     const nextIndex = sessionIndex + 1;
-    if (selectedCount !== 'infinite' && nextIndex >= selectedCount) {
+    if (nextIndex >= sessionQueue.length) {
       setIsCompleted(true);
       return;
     }
@@ -136,14 +188,52 @@ export const EnglishSentenceTypingView: React.FC<EnglishSentenceTypingViewProps>
     setIsCorrect(false);
   };
 
-  const handleExitFullScreen = () => {
-    playTapSound(soundEnabled);
-    setIsPracticeActive(false);
-    setIsCompleted(false);
-  };
-
-  // 1. PRE-PRACTICE SETUP SCREEN
+  // 1. TOPIC / TEST SELECTION SCREEN (WHEN PRACTICE NOT ACTIVE)
   if (!isPracticeActive) {
+    const allCount = typingList.length;
+    const beginnerCount = typingList.filter((t) => t.level === 'beginner').length;
+    const intermediateCount = typingList.filter((t) => t.level === 'intermediate').length;
+    const advancedCount = typingList.filter((t) => t.level === 'advanced').length;
+
+    const topicsList = [
+      {
+        id: 'all' as const,
+        titleHi: 'सभी टाइपिंग वाक्यों का संपूर्ण टेस्ट (All Typing Sentences)',
+        desc: 'फ़ायरबेस में मौजूद सभी अंग्रेजी वाक्यों को लिखकर अभ्यास करने का टेस्ट',
+        count: allCount,
+        badge: 'संपूर्ण टेस्ट 🎯',
+        bg: 'from-blue-600 to-cyan-700',
+        borderColor: 'border-blue-200 hover:border-blue-500',
+      },
+      {
+        id: 'beginner' as const,
+        titleHi: 'बेसिक वाक्य (Basic Daily Sentences)',
+        desc: 'दैनिक बातचीत के सरल और छोटे अंग्रेजी वाक्य',
+        count: beginnerCount || allCount,
+        badge: 'Level 1 🥉',
+        bg: 'from-emerald-600 to-teal-700',
+        borderColor: 'border-emerald-200 hover:border-emerald-500',
+      },
+      {
+        id: 'intermediate' as const,
+        titleHi: 'मध्यम स्तर (Intermediate Office & Travel Phrases)',
+        desc: 'कार्यालय, व्यापार और यात्रा से जुड़े वाक्यों का टाइपिंग अभ्यास',
+        count: intermediateCount || allCount,
+        badge: 'Level 2 🥈',
+        bg: 'from-purple-600 to-indigo-700',
+        borderColor: 'border-purple-200 hover:border-purple-500',
+      },
+      {
+        id: 'advanced' as const,
+        titleHi: 'उच्च स्तर (Advanced Complex & Idiomatic Sentences)',
+        desc: 'मुहावरेदार और परीक्षा विशेष जटिल संरचना वाले वाक्य',
+        count: advancedCount || allCount,
+        badge: 'Level 3 🥇',
+        bg: 'from-rose-600 to-pink-700',
+        borderColor: 'border-rose-200 hover:border-rose-500',
+      },
+    ];
+
     return (
       <div className="space-y-4 animate-in fade-in duration-200">
         {/* Top Navigation */}
@@ -159,122 +249,68 @@ export const EnglishSentenceTypingView: React.FC<EnglishSentenceTypingViewProps>
             <ArrowLeft className="w-4 h-4" />
             <span>{language === 'hi' ? 'वापस' : 'Back'}</span>
           </button>
-          <span className="text-xs font-bold text-sky-800 bg-sky-50 border border-sky-200/60 px-3 py-1 rounded-xl">
-            ⌨️ {filtered.length} वाक्य उपलब्ध
+          <span className="text-xs font-bold text-blue-800 bg-blue-50 border border-blue-200 px-3 py-1 rounded-xl">
+            ⌨️ कुल {allCount} वाक्य उपलब्ध
           </span>
         </div>
 
-        {/* Practice Setup Card */}
-        <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-sm space-y-5">
-          <div>
-            <div className="w-12 h-12 rounded-2xl bg-sky-100 text-sky-700 flex items-center justify-center text-2xl mb-3 shadow-inner">
-              ⌨️
+        {/* Banner */}
+        <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white p-4 rounded-3xl shadow-md space-y-1">
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-blue-500/20 text-blue-300 rounded-xl">
+              <Keyboard className="w-5 h-5" />
             </div>
-            <h2 className="text-lg font-black text-slate-900 tracking-tight">
-              Sentence Typing अभ्यास
-            </h2>
-            <p className="text-xs text-slate-600 font-medium mt-1 leading-relaxed">
-              हिंदी वाक्यों को खुद अंग्रेजी में टाइप करके अपनी ग्रामर और वोकैबुलरी मजबूत करें। अभ्यास पूरी स्क्रीन पर खुलेगा।
-            </p>
+            <div>
+              <h2 className="text-base font-black tracking-tight">
+                टाइपिंग प्रैक्टिस टॉपिक एवं टेस्ट (Sentence Typing Topics)
+              </h2>
+              <p className="text-[11px] text-blue-200 font-medium">
+                टॉपिक चुनें और उस टेस्ट के सभी अंग्रेजी वाक्य लिखकर अभ्यास करें
+              </p>
+            </div>
           </div>
+        </div>
 
-          {/* Question Count Selection */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-700 block">
-              1. प्रश्नों (वाक्यों) की संख्या चुनें:
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { count: 5 as QuestionCountOption, label: '5 वाक्य', sub: 'त्वरित टाइपिंग' },
-                { count: 10 as QuestionCountOption, label: '10 वाक्य', sub: 'मानक सेट' },
-                { count: 15 as QuestionCountOption, label: '15 वाक्य', sub: 'अनुशंसित' },
-                { count: 20 as QuestionCountOption, label: '20 वाक्य', sub: 'गहरा अभ्यास' },
-                { count: 'infinite' as QuestionCountOption, label: '∞ अनलिमिटेड', sub: 'अनंत सवाल' },
-              ].map((opt) => (
-                <button
-                  key={String(opt.count)}
-                  type="button"
-                  onClick={() => {
-                    playTapSound(soundEnabled);
-                    setSelectedCount(opt.count);
-                  }}
-                  className={`p-3 rounded-2xl border text-center transition-all cursor-pointer active:scale-95 ${
-                    selectedCount === opt.count
-                      ? 'bg-sky-600 border-sky-700 text-white shadow-md ring-2 ring-sky-200'
-                      : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                  }`}
-                >
-                  <span className="block text-sm font-black">{opt.label}</span>
-                  <span className={`block text-[10px] mt-0.5 ${
-                    selectedCount === opt.count ? 'text-sky-100' : 'text-slate-500'
-                  }`}>
-                    {opt.sub}
+        {/* Topic Cards List */}
+        <div className="space-y-3">
+          {topicsList.map((top) => (
+            <div
+              key={top.id}
+              onClick={() => handleStartTest(top.id)}
+              className={`bg-white p-4 rounded-3xl border-2 ${top.borderColor} shadow-xs hover:shadow-md transition-all active:scale-98 cursor-pointer flex items-center justify-between gap-3 group`}
+            >
+              <div className="space-y-1 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-md text-white bg-gradient-to-r ${top.bg}`}>
+                    {top.badge}
                   </span>
-                </button>
-              ))}
+                  <span className="text-[11px] font-bold text-slate-500">
+                    {top.count} वाक्य शामिल
+                  </span>
+                </div>
+                <h3 className="text-sm font-black text-slate-900 group-hover:text-blue-700 transition-colors">
+                  {top.titleHi}
+                </h3>
+                <p className="text-xs text-slate-500 leading-snug">
+                  {top.desc}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className={`py-2 px-3.5 rounded-2xl text-xs font-black text-white bg-gradient-to-r ${top.bg} shadow-xs group-hover:scale-105 transition-transform shrink-0 flex items-center gap-1 cursor-pointer`}
+              >
+                <span>स्टार्ट</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
             </div>
-          </div>
-
-          {/* Level Selection */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-700 block">
-              2. स्तर चुनें (Difficulty Level):
-            </label>
-            <div className="grid grid-cols-4 gap-1.5">
-              {[
-                { id: 'all', label: 'सभी (All)' },
-                { id: 'beginner', label: 'Beginner' },
-                { id: 'intermediate', label: 'Medium' },
-                { id: 'advanced', label: 'Advanced' },
-              ].map((lvl) => (
-                <button
-                  key={lvl.id}
-                  type="button"
-                  onClick={() => {
-                    playTapSound(soundEnabled);
-                    setSelectedLevel(lvl.id as EnglishProficiencyLevel | 'all');
-                  }}
-                  className={`py-2 rounded-xl text-center text-xs font-bold transition-all cursor-pointer active:scale-95 ${
-                    selectedLevel === lvl.id
-                      ? 'bg-slate-900 text-white shadow-xs'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                  }`}
-                >
-                  {lvl.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Pool Info */}
-          <div className="p-3 bg-sky-50/70 border border-sky-100 rounded-2xl flex items-center justify-between text-xs">
-            <span className="text-sky-900 font-semibold">
-              वर्तमान उपलब्ध वाक्य बैंक:
-            </span>
-            <span className="font-black text-sky-950">
-              {filtered.length} वाक्य
-            </span>
-          </div>
-
-          {/* Start Full Screen Practice Button */}
-          <button
-            onClick={handleStartPractice}
-            type="button"
-            className="w-full py-4 bg-sky-600 hover:bg-sky-700 active:scale-98 text-white rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-sky-600/25 transition-all cursor-pointer"
-          >
-            <span>🚀 फुल स्क्रीन में टाइपिंग अभ्यास शुरू करें</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
+          ))}
         </div>
       </div>
     );
   }
 
-  // 2. FULL SCREEN TYPING VIEW
-  const totalTarget = selectedCount === 'infinite' ? null : selectedCount;
-  const progressPercent = totalTarget ? Math.min(100, Math.round(((sessionIndex + 1) / totalTarget) * 100)) : 100;
-
-  // Completion Screen
+  // 2. COMPLETION SCREEN
   if (isCompleted) {
     const totalDone = sessionCorrect + sessionWrong;
     const accuracy = totalDone > 0 ? Math.round((sessionCorrect / totalDone) * 100) : 0;
@@ -282,16 +318,16 @@ export const EnglishSentenceTypingView: React.FC<EnglishSentenceTypingViewProps>
     return (
       <div className="fixed inset-0 z-50 bg-slate-950 text-white flex flex-col items-center justify-center p-4 animate-in fade-in duration-200">
         <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 text-center shadow-2xl space-y-6">
-          <div className="w-20 h-20 bg-sky-500/20 text-sky-400 rounded-full flex items-center justify-center text-4xl mx-auto shadow-inner">
+          <div className="w-20 h-20 bg-blue-500/20 text-blue-400 rounded-full flex items-center justify-center text-4xl mx-auto shadow-inner">
             <Trophy className="w-10 h-10" />
           </div>
 
           <div>
             <h2 className="text-xl sm:text-2xl font-black tracking-tight">
-              टाइपिंग सेट पूरा हुआ!
+              टाइपिंग टेस्ट पूरा हुआ!
             </h2>
             <p className="text-xs text-slate-400 mt-1">
-              उत्कृष्ट काम! खुद से टाइप करने से अंग्रेजी सोचने की आदत विकसित होती है।
+              आपने इस टेस्ट के सभी {totalDone} वाक्यों का सफलता से टाइपिंग अभ्यास कर लिया है।
             </p>
           </div>
 
@@ -302,37 +338,43 @@ export const EnglishSentenceTypingView: React.FC<EnglishSentenceTypingViewProps>
               <span className="text-xl font-black text-white">{totalDone}</span>
             </div>
             <div>
-              <span className="text-[11px] text-emerald-400 block font-medium">सही अनुवाद</span>
+              <span className="text-[11px] text-emerald-400 block font-medium">सही उत्तर</span>
               <span className="text-xl font-black text-emerald-400">{sessionCorrect}</span>
             </div>
             <div>
-              <span className="text-[11px] text-sky-400 block font-medium">सटीकता</span>
-              <span className="text-xl font-black text-sky-400">{accuracy}%</span>
+              <span className="text-[11px] text-blue-400 block font-medium">सटीकता</span>
+              <span className="text-xl font-black text-blue-400">{accuracy}%</span>
             </div>
           </div>
 
           {sessionWrong > 0 && (
             <p className="text-xs text-rose-300 bg-rose-950/50 border border-rose-900/50 p-2.5 rounded-xl font-medium">
-              💡 {sessionWrong} गलत वाक्य Revision Centre में सेव कर दिए गए हैं।
+              💡 {sessionWrong} गलत वाक्य Revision Centre में जोड़ दिए गए हैं।
             </p>
           )}
 
           {/* Action Buttons */}
           <div className="space-y-2.5">
             <button
-              onClick={handleStartPractice}
+              onClick={() => {
+                playTapSound(soundEnabled);
+                handleStartTest(selectedTopic);
+              }}
               type="button"
-              className="w-full py-3.5 bg-sky-600 hover:bg-sky-700 active:scale-95 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
+              className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
             >
               <RotateCcw className="w-4 h-4" />
-              <span>नया टाइपिंग अभ्यास शुरू करें</span>
+              <span>इसी टाइपिंग टेस्ट का पुनः अभ्यास करें</span>
             </button>
             <button
-              onClick={handleExitFullScreen}
+              onClick={() => {
+                playTapSound(soundEnabled);
+                setIsPracticeActive(false);
+              }}
               type="button"
               className="w-full py-3 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 rounded-xl font-bold text-xs transition-all cursor-pointer"
             >
-              <span>मेनू में वापस जाएं (Back to Menu)</span>
+              <span>दूसरा टेस्ट टॉपिक चुनें (Select Topic)</span>
             </button>
           </div>
         </div>
@@ -345,14 +387,21 @@ export const EnglishSentenceTypingView: React.FC<EnglishSentenceTypingViewProps>
       <div className="fixed inset-0 z-50 bg-slate-950 text-white flex flex-col items-center justify-center p-4">
         <p className="text-sm font-bold text-slate-300">वाक्य लोड हो रहे हैं...</p>
         <button
-          onClick={handleExitFullScreen}
-          className="mt-4 px-4 py-2 bg-sky-600 rounded-xl text-xs font-bold"
+          onClick={() => {
+            playTapSound(soundEnabled);
+            setIsPracticeActive(false);
+          }}
+          className="mt-4 px-4 py-2 bg-blue-600 rounded-xl text-xs font-bold"
         >
-          वापस जाएं
+          टॉपिक सूची पर जाएं
         </button>
       </div>
     );
   }
+
+  const totalSentencesInSession = sessionQueue.length;
+  const currentNum = sessionIndex + 1;
+  const setProgressPercent = Math.min(100, Math.round((currentNum / (totalSentencesInSession || 1)) * 100));
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950 text-white flex flex-col overflow-y-auto animate-in fade-in duration-200">
@@ -360,17 +409,20 @@ export const EnglishSentenceTypingView: React.FC<EnglishSentenceTypingViewProps>
       <div className="sticky top-0 z-20 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 px-4 py-3">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
           <button
-            onClick={handleExitFullScreen}
+            onClick={() => {
+              playTapSound(soundEnabled);
+              setIsPracticeActive(false);
+            }}
             type="button"
             className="flex items-center gap-1.5 py-1 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer"
           >
-            <X className="w-4 h-4" />
+            <ArrowLeft className="w-4 h-4" />
             <span>बाहर निकलें</span>
           </button>
 
           <div className="flex items-center gap-3">
-            <span className="text-xs font-black text-sky-300 bg-sky-950/80 border border-sky-800 px-2.5 py-1 rounded-xl font-mono">
-              वाक्य {sessionIndex + 1} / {totalTarget ? totalTarget : '∞'}
+            <span className="text-xs font-black text-blue-300 bg-blue-950/80 border border-blue-800 px-2.5 py-1 rounded-xl font-mono">
+              वाक्य {currentNum} / {totalSentencesInSession}
             </span>
             <span className="text-xs font-bold text-emerald-400 bg-emerald-950/80 border border-emerald-900 px-2 py-1 rounded-xl">
               ✓ {sessionCorrect}
@@ -384,117 +436,97 @@ export const EnglishSentenceTypingView: React.FC<EnglishSentenceTypingViewProps>
         </div>
 
         {/* Progress Bar */}
-        {totalTarget && (
-          <div className="w-full bg-slate-800 h-1.5 mt-2 rounded-full overflow-hidden">
-            <div
-              className="bg-sky-500 h-full transition-all duration-300 ease-out"
-              style={{ width: `${progressPercent}%` }}
-            />
-          </div>
-        )}
+        <div className="w-full bg-slate-800 h-1.5 mt-2 rounded-full overflow-hidden max-w-2xl mx-auto">
+          <div
+            className="bg-blue-500 h-full transition-all duration-300 ease-out"
+            style={{ width: `${setProgressPercent}%` }}
+          />
+        </div>
       </div>
 
-      {/* Main Full Screen Typing Stage */}
+      {/* Main Practice Area */}
       <div className="flex-1 flex flex-col justify-center max-w-xl mx-auto w-full px-4 py-6 space-y-5">
-        {/* Difficulty Pill */}
-        <div className="flex items-center justify-between text-xs">
-          <span className="font-bold text-sky-400 bg-sky-950/60 border border-sky-800/80 px-2.5 py-1 rounded-lg">
-            कठिनाई: {currentItem.difficulty || 'Standard'}
-          </span>
-          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider font-mono">
-            {currentItem.level}
-          </span>
-        </div>
-
-        {/* Hindi Prompt */}
+        {/* Prompt Card */}
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 text-center shadow-lg space-y-2">
-          <span className="text-[11px] font-black uppercase text-sky-400 tracking-wider block">
-            दिए गए हिंदी वाक्य को सही English में टाइप करें:
+          <span className="text-[11px] font-black uppercase text-blue-400 tracking-wider block">
+            हिंदी अर्थ देखकर सटीक अँग्रेजी वाक्य टाइप करें:
           </span>
+
           <h2 className="text-xl sm:text-2xl font-black text-white leading-relaxed">
             "{currentItem.hindiSentence}"
           </h2>
         </div>
 
-        {/* Interactive Typing Form */}
-        <form onSubmit={handleCheck} className="space-y-4">
+        {/* Input Form */}
+        <form onSubmit={handleCheck} className="space-y-3">
           <div className="relative">
-            <input
-              type="text"
+            <textarea
+              rows={2}
               value={userTyped}
               onChange={(e) => setUserTyped(e.target.value)}
               disabled={isAnswered}
-              placeholder="यहाँ अंग्रेजी अनुवाद टाइप करें..."
+              placeholder="अँग्रेजी अनुवाद टाइप करें..."
               autoFocus
-              className={`w-full py-4 px-5 pr-12 rounded-2xl border text-sm sm:text-base font-bold transition-all outline-hidden ${
+              className={`w-full py-3.5 px-4 rounded-2xl bg-slate-900 border-2 text-sm sm:text-base font-bold text-white placeholder-slate-500 focus:outline-none transition-all resize-none ${
                 isAnswered
                   ? isCorrect
-                    ? 'bg-emerald-950/50 border-emerald-500 text-emerald-200 ring-2 ring-emerald-400'
-                    : 'bg-rose-950/50 border-rose-500 text-rose-200 ring-2 ring-rose-400'
-                  : 'bg-slate-900 border-slate-800 text-white focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20'
+                    ? 'border-emerald-500 bg-emerald-950/30'
+                    : 'border-rose-500 bg-rose-950/30'
+                  : 'border-slate-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
               }`}
             />
-            {isAnswered && (
-              <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                {isCorrect ? (
-                  <Check className="w-6 h-6 text-emerald-400" />
-                ) : (
-                  <X className="w-6 h-6 text-rose-400" />
-                )}
-              </div>
-            )}
           </div>
 
-          {!isAnswered ? (
+          {!isAnswered && (
             <button
               type="submit"
               disabled={!userTyped.trim()}
-              className="w-full py-4 bg-sky-600 hover:bg-sky-700 active:scale-98 disabled:opacity-40 text-white rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-sky-600/30 transition-all cursor-pointer"
+              className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl font-black text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
             >
-              <Keyboard className="w-4 h-4" />
-              <span>उत्तर जांचें (Check Translation)</span>
+              <span>वाक्य सबमिट करें</span>
+              <Check className="w-4 h-4" />
             </button>
-          ) : (
-            <div className="space-y-3.5 pt-1 animate-in fade-in slide-in-from-bottom-2 duration-200">
-              {/* Feedback Card */}
-              <div className={`p-4 rounded-2xl border text-xs sm:text-sm space-y-2 ${
-                isCorrect 
-                  ? 'bg-emerald-950/50 border-emerald-800/80 text-emerald-200' 
-                  : 'bg-rose-950/50 border-rose-800/80 text-rose-200'
-              }`}>
-                <div className="font-bold flex items-center gap-2">
-                  {isCorrect ? '✓ बिल्कुल सही उत्तर!' : '✕ गलत उत्तर! सही अनुवाद नीचे देखें:'}
-                </div>
-                <div className="bg-slate-900/90 p-3 rounded-xl border border-slate-800 font-mono text-sm font-bold text-white">
-                  {currentItem.targetEnglish}
-                </div>
-
-                {currentItem.acceptedVariations?.length > 1 && (
-                  <div className="text-[11px] text-slate-300">
-                    <span className="font-bold text-slate-400">अन्य मान्य रूप: </span>
-                    {currentItem.acceptedVariations.slice(1).join(' / ')}
-                  </div>
-                )}
-
-                {currentItem.grammarTipHi && (
-                  <div className="text-[11px] text-slate-300 flex items-start gap-1.5 pt-1 border-t border-slate-800">
-                    <Lightbulb className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-                    <span>{currentItem.grammarTipHi}</span>
-                  </div>
-                )}
-              </div>
-
-              <button
-                type="button"
-                onClick={handleNext}
-                className="w-full py-4 bg-sky-600 hover:bg-sky-700 active:scale-98 text-white rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-sky-600/30 transition-all cursor-pointer"
-              >
-                <span>अगला वाक्य (Next Sentence)</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
           )}
         </form>
+
+        {/* Answer Feedback & Next Button */}
+        {isAnswered && (
+          <div className="space-y-3.5 animate-in fade-in slide-in-from-bottom-2 duration-200">
+            <div className={`p-4 rounded-2xl border ${
+              isCorrect 
+                ? 'bg-emerald-950/60 border-emerald-800 text-emerald-200' 
+                : 'bg-rose-950/60 border-rose-800 text-rose-200'
+            }`}>
+              <div className="flex items-center gap-2 mb-1">
+                {isCorrect ? (
+                  <Check className="w-5 h-5 text-emerald-400" />
+                ) : (
+                  <X className="w-5 h-5 text-rose-400" />
+                )}
+                <span className="font-bold text-sm">
+                  {isCorrect ? 'बिल्कुल सही अँग्रेजी अनुवाद!' : 'अनुवाद में त्रुटि!'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                <span className="font-bold text-white">सटीक उत्तर:</span> "{currentItem.targetEnglish}"
+              </p>
+              {currentItem.grammarTipHi && (
+                <p className="text-[11px] text-blue-300 mt-2 bg-blue-950/40 p-2 rounded-lg border border-blue-900/50">
+                  💡 <span className="font-bold">ग्रामर टिप:</span> {currentItem.grammarTipHi}
+                </p>
+              )}
+            </div>
+
+            <button
+              onClick={handleNext}
+              type="button"
+              className="w-full py-4 bg-blue-600 hover:bg-blue-700 active:scale-98 text-white rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 transition-all cursor-pointer"
+            >
+              <span>अगला वाक्य (Next Sentence)</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

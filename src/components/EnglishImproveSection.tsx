@@ -74,36 +74,11 @@ export const EnglishImproveSection: React.FC<EnglishImproveSectionProps> = ({
     StorageService.getEnglishProgress()
   );
 
-  // Silent background replenishment queue - completely invisible to the user
-  const isRefillingRef = useRef<{ [key: string]: boolean }>({});
-  const lastRefillTimestampRef = useRef<number>(0);
-
-  const handleSilentBackgroundRefill = async (type: EnglishContentType) => {
-    const now = Date.now();
-    // Enforce 15-second global throttle between background AI sync requests to prevent 429 rate limit errors
-    if (now - lastRefillTimestampRef.current < 15000) return;
-    if (isRefillingRef.current[type]) return;
-
-    isRefillingRef.current[type] = true;
-    lastRefillTimestampRef.current = now;
-
-    try {
-      let existing: string[] = [];
-      if (type === 'vocab') existing = vocabList.map((v) => v.word);
-      else if (type === 'sentences') existing = sentencesList.map((s) => s.english);
-      else if (type === 'spelling') existing = spellingList.map((sp) => sp.word);
-      else if (type === 'mcq') existing = mcqList.map((m) => m.hindiSentence);
-      else if (type === 'typing') existing = typingList.map((t) => t.hindiSentence);
-
-      // Silently generate and sync to Firebase Firestore so questions never end
-      await EnglishAiService.generateAndSync(type, 'intermediate', existing);
-    } catch {
-      // Silent catch
-    } finally {
-      setTimeout(() => {
-        isRefillingRef.current[type] = false;
-      }, 15000);
-    }
+  // Silent background replenishment queue - disabled so only admin added questions from Firebase are shown
+  const handleSilentBackgroundRefill = async (_type: EnglishContentType) => {
+    // Automatic AI question generation is permanently disabled.
+    // Content is managed strictly manually via Firebase Firestore / Admin Panel.
+    return;
   };
 
   // Subscribe to real-time Firestore updates

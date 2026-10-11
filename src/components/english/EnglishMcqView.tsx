@@ -1,17 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { EnglishMcqItem, EnglishProficiencyLevel, Language, UserWrongAnswerItem } from '../../types';
 import { playTapSound, playCorrectSound, playWrongSound } from '../../utils/audio';
+import { StorageService } from '../../services/storageService';
 import { 
   ArrowLeft, 
   Check, 
   X, 
   ArrowRight, 
-  CheckCircle2,
   Trophy,
   RotateCcw,
   Sparkles,
+  HelpCircle,
+  BookOpen,
   Layers,
-  HelpCircle
+  Award
 } from 'lucide-react';
 
 interface EnglishMcqViewProps {
@@ -24,7 +26,14 @@ interface EnglishMcqViewProps {
   onSilentReplenish?: () => void;
 }
 
-type QuestionCountOption = 5 | 10 | 15 | 20 | 'infinite';
+function shuffleArray<T>(arr: T[]): T[] {
+  const result = [...arr];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
 
 export const EnglishMcqView: React.FC<EnglishMcqViewProps> = ({
   mcqList,
@@ -35,12 +44,12 @@ export const EnglishMcqView: React.FC<EnglishMcqViewProps> = ({
   onSuccess,
   onSilentReplenish,
 }) => {
-  // Setup configuration state
+  // Setup topic / test selection state
+  const [selectedTopic, setSelectedTopic] = useState<EnglishProficiencyLevel | 'all'>('all');
   const [isPracticeActive, setIsPracticeActive] = useState(false);
-  const [selectedCount, setSelectedCount] = useState<QuestionCountOption>(10);
-  const [selectedLevel, setSelectedLevel] = useState<EnglishProficiencyLevel | 'all'>('all');
 
   // Active session state
+  const [sessionQueue, setSessionQueue] = useState<EnglishMcqItem[]>([]);
   const [sessionIndex, setSessionIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
@@ -48,24 +57,48 @@ export const EnglishMcqView: React.FC<EnglishMcqViewProps> = ({
   const [sessionWrong, setSessionWrong] = useState(0);
   const [isCompleted, setIsCompleted] = useState(false);
 
-  // Filter pool based on level
-  const filtered = mcqList.filter(
-    (q) => selectedLevel === 'all' || q.level === selectedLevel
-  );
-
-  const currentQ: EnglishMcqItem | undefined = filtered[sessionIndex % (filtered.length || 1)];
-
-  // Silent background replenishment when pool gets used
-  useEffect(() => {
-    if (isPracticeActive && onSilentReplenish) {
-      if (sessionIndex >= filtered.length - 2 || selectedCount === 'infinite') {
-        onSilentReplenish();
+  // Build session queue strictly containing filtered items (unseen first, then seen)
+  const buildSessionQueue = (pool: EnglishMcqItem[]) => {
+    // Deduplicate by question text
+    const uniqueMap = new Map<string, EnglishMcqItem>();
+    for (const item of pool) {
+      const key = (item.hindiSentence || item.id || '').trim().toLowerCase();
+      if (!uniqueMap.has(key)) {
+        uniqueMap.set(key, item);
       }
     }
-  }, [sessionIndex, isPracticeActive, filtered.length, selectedCount, onSilentReplenish]);
+    const cleanPool = Array.from(uniqueMap.values());
 
-  const handleStartPractice = () => {
+    const seenSet = StorageService.getSeenEnglishQuestions();
+    const unseen: EnglishMcqItem[] = [];
+    const seen: EnglishMcqItem[] = [];
+
+    for (const q of cleanPool) {
+      const key = (q.hindiSentence || q.id || '').trim().toLowerCase();
+      if (seenSet.has(key)) {
+        seen.push(q);
+      } else {
+        unseen.push(q);
+      }
+    }
+
+    const shuffledUnseen = shuffleArray(unseen);
+    const shuffledSeen = shuffleArray(seen);
+    // Include ALL questions in that topic/test (no cutoff!)
+    return [...shuffledUnseen, ...shuffledSeen];
+  };
+
+  const handleStartTest = (level: EnglishProficiencyLevel | 'all') => {
     playTapSound(soundEnabled);
+    setSelectedTopic(level);
+
+    const filteredPool = mcqList.filter(
+      (q) => level === 'all' || q.level === level
+    );
+    const poolToUse = filteredPool.length > 0 ? filteredPool : mcqList;
+
+    const queue = buildSessionQueue(poolToUse);
+    setSessionQueue(queue);
     setSessionIndex(0);
     setSelectedOption(null);
     setIsAnswered(false);
@@ -73,6 +106,38 @@ export const EnglishMcqView: React.FC<EnglishMcqViewProps> = ({
     setSessionWrong(0);
     setIsCompleted(false);
     setIsPracticeActive(true);
+  };
+
+  const currentQ: EnglishMcqItem | undefined =
+    sessionQueue.length > sessionIndex
+      ? sessionQueue[sessionIndex]
+      : sessionQueue[0];
+
+  // Mark current question as seen persistently so it doesn't repeat across sessions
+  useEffect(() => {
+    if (isPracticeActive && currentQ) {
+      const key = currentQ.hindiSentence || currentQ.id;
+      if (key) {
+        StorageService.addSeenEnglishQuestion(key);
+      }
+    }
+  }, [isPracticeActive, currentQ]);
+
+  const handleRestartFresh = () => {
+    playTapSound(soundEnabled);
+    const filteredPool = mcqList.filter(
+      (q) => selectedTopic === 'all' || q.level === selectedTopic
+    );
+    const poolToUse = filteredPool.length > 0 ? filteredPool : mcqList;
+    const queue = buildSessionQueue(poolToUse);
+
+    setSessionQueue(queue);
+    setSessionIndex(0);
+    setSelectedOption(null);
+    setIsAnswered(false);
+    setSessionCorrect(0);
+    setSessionWrong(0);
+    setIsCompleted(false);
   };
 
   const handleSelectOption = (idx: number) => {
@@ -92,14 +157,13 @@ export const EnglishMcqView: React.FC<EnglishMcqViewProps> = ({
         id: `wrong_mcq_${Date.now()}`,
         type: 'mcq',
         question: currentQ.hindiSentence,
-        correctAnswer: currentQ.options[currentQ.correctIndex],
-        userAnswer: currentQ.options[idx],
+        correctAnswer: (currentQ.options && currentQ.options[currentQ.correctIndex]) || '',
+        userAnswer: (currentQ.options && currentQ.options[idx]) || '',
         explanationHi: currentQ.explanationHi,
         timestamp: new Date().toISOString(),
       });
     }
 
-    // Trigger silent background replenishment on every answer so questions never end
     if (onSilentReplenish) {
       onSilentReplenish();
     }
@@ -108,28 +172,74 @@ export const EnglishMcqView: React.FC<EnglishMcqViewProps> = ({
   const handleNext = () => {
     playTapSound(soundEnabled);
 
-    const nextIndex = sessionIndex + 1;
-    if (selectedCount !== 'infinite' && nextIndex >= selectedCount) {
+    const nextIdx = sessionIndex + 1;
+    if (nextIdx >= sessionQueue.length) {
       setIsCompleted(true);
       return;
     }
 
-    setSessionIndex(nextIndex);
+    setSessionIndex(nextIdx);
     setSelectedOption(null);
     setIsAnswered(false);
   };
 
-  const handleExitFullScreen = () => {
-    playTapSound(soundEnabled);
-    setIsPracticeActive(false);
-    setIsCompleted(false);
-  };
-
-  // 1. PRE-PRACTICE SETUP SCREEN (Select question count and level)
+  // 1. TOPIC / TEST SELECTION SCREEN (WHEN PRACTICE NOT ACTIVE)
   if (!isPracticeActive) {
+    const allCount = mcqList.length;
+    const beginnerCount = mcqList.filter((m) => m.level === 'beginner').length;
+    const intermediateCount = mcqList.filter((m) => m.level === 'intermediate').length;
+    const advancedCount = mcqList.filter((m) => m.level === 'advanced').length;
+
+    const topicsList = [
+      {
+        id: 'all' as const,
+        titleHi: 'सभी MCQ टेस्ट (All MCQs Test)',
+        titleEn: 'All Questions Test',
+        desc: 'फ़ायरबेस में मौजूद सभी बहुविकल्पीय प्रश्नों का संपूर्ण अभ्यास टेस्ट',
+        count: allCount,
+        badge: 'संपूर्ण टेस्ट 🎯',
+        bg: 'from-blue-600 to-indigo-700',
+        textColor: 'text-blue-600',
+        borderColor: 'border-blue-200 hover:border-blue-500',
+      },
+      {
+        id: 'beginner' as const,
+        titleHi: 'बेसिक व्याकरण (Basic Tenses & Rules)',
+        titleEn: 'Beginner Test',
+        desc: 'सरल काल, नियम और रोज़मर्रा के वाक्य अनुवाद',
+        count: beginnerCount || allCount,
+        badge: 'Level 1 🥉',
+        bg: 'from-emerald-600 to-teal-700',
+        textColor: 'text-emerald-600',
+        borderColor: 'border-emerald-200 hover:border-emerald-500',
+      },
+      {
+        id: 'intermediate' as const,
+        titleHi: 'मध्यम स्तर (Intermediate Correction)',
+        titleEn: 'Intermediate Test',
+        desc: 'प्रीपोजिशन, कंबाइंड क्लॉज़ और मध्यम वाक्य अभ्यास',
+        count: intermediateCount || allCount,
+        badge: 'Level 2 🥈',
+        bg: 'from-purple-600 to-violet-700',
+        textColor: 'text-purple-600',
+        borderColor: 'border-purple-200 hover:border-purple-500',
+      },
+      {
+        id: 'advanced' as const,
+        titleHi: 'उच्च स्तर (Advanced Exam Rules)',
+        titleEn: 'Advanced Test',
+        desc: 'इनवर्जन, कंडीशनल क्लॉज़ और परीक्षा स्पेशल ट्रैप रूल्स',
+        count: advancedCount || allCount,
+        badge: 'Level 3 🥇',
+        bg: 'from-amber-600 to-orange-700',
+        textColor: 'text-amber-600',
+        borderColor: 'border-amber-200 hover:border-amber-500',
+      },
+    ];
+
     return (
       <div className="space-y-4 animate-in fade-in duration-200">
-        {/* Top Navigation */}
+        {/* Header */}
         <div className="flex items-center justify-between">
           <button
             onClick={() => {
@@ -137,127 +247,74 @@ export const EnglishMcqView: React.FC<EnglishMcqViewProps> = ({
               onBack();
             }}
             type="button"
-            className="flex items-center gap-1.5 py-1.5 px-3.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 active:scale-95 transition-all shadow-2xs cursor-pointer"
+            className="flex items-center gap-1.5 py-1 px-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 active:scale-95 transition-all shadow-2xs cursor-pointer"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft className="w-3.5 h-3.5" />
             <span>{language === 'hi' ? 'वापस' : 'Back'}</span>
           </button>
-          <span className="text-xs font-bold text-purple-800 bg-purple-50 border border-purple-200/60 px-3 py-1 rounded-xl">
-            🎯 {filtered.length} प्रश्न उपलब्ध
+          <span className="text-xs font-bold text-purple-700 bg-purple-50 px-2.5 py-1 rounded-xl border border-purple-100 flex items-center gap-1">
+            <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+            <span>कुल {allCount} MCQ प्रश्न</span>
           </span>
         </div>
 
-        {/* Practice Setup Card */}
-        <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-sm space-y-5">
-          <div>
-            <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center text-2xl mb-3 shadow-inner">
-              🎯
+        {/* Title Banner */}
+        <div className="bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 text-white p-4 rounded-3xl shadow-md space-y-1">
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-purple-500/20 text-purple-300 rounded-xl">
+              <BookOpen className="w-5 h-5" />
             </div>
-            <h2 className="text-lg font-black text-slate-900 tracking-tight">
-              Hindi to English MCQ अभ्यास
-            </h2>
-            <p className="text-xs text-slate-600 font-medium mt-1 leading-relaxed">
-              अभ्यास शुरू करने से पहले प्रश्नों की संख्या और स्तर चुनें। इसके बाद प्रश्न पूरी स्क्रीन पर आएंगे।
-            </p>
+            <div>
+              <h2 className="text-base font-black tracking-tight">
+                MCQ प्रैक्टिस टॉपिक एवं टेस्ट (Select Test Topic)
+              </h2>
+              <p className="text-[11px] text-purple-200 font-medium">
+                विषय चुनें और उस टेस्ट के सभी प्रश्न एक साथ हल करें
+              </p>
+            </div>
           </div>
+        </div>
 
-          {/* Question Count Selection */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-700 block">
-              1. प्रश्नों की संख्या चुनें (Select Question Count):
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { count: 5 as QuestionCountOption, label: '5 प्रश्न', sub: 'त्वरित अभ्यास' },
-                { count: 10 as QuestionCountOption, label: '10 प्रश्न', sub: 'मानक सेट' },
-                { count: 15 as QuestionCountOption, label: '15 प्रश्न', sub: 'अनुशंसित' },
-                { count: 20 as QuestionCountOption, label: '20 प्रश्न', sub: 'गहरा अभ्यास' },
-                { count: 'infinite' as QuestionCountOption, label: '∞ अनलिमिटेड', sub: 'अनंत सवाल' },
-              ].map((opt) => (
-                <button
-                  key={String(opt.count)}
-                  type="button"
-                  onClick={() => {
-                    playTapSound(soundEnabled);
-                    setSelectedCount(opt.count);
-                  }}
-                  className={`p-3 rounded-2xl border text-center transition-all cursor-pointer active:scale-95 ${
-                    selectedCount === opt.count
-                      ? 'bg-purple-600 border-purple-700 text-white shadow-md ring-2 ring-purple-200'
-                      : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                  }`}
-                >
-                  <span className="block text-sm font-black">{opt.label}</span>
-                  <span className={`block text-[10px] mt-0.5 ${
-                    selectedCount === opt.count ? 'text-purple-100' : 'text-slate-500'
-                  }`}>
-                    {opt.sub}
+        {/* Topic / Test Cards List */}
+        <div className="space-y-3">
+          {topicsList.map((top) => (
+            <div
+              key={top.id}
+              onClick={() => handleStartTest(top.id)}
+              className={`bg-white p-4 rounded-3xl border-2 ${top.borderColor} shadow-xs hover:shadow-md transition-all active:scale-98 cursor-pointer flex items-center justify-between gap-3 group`}
+            >
+              <div className="space-y-1 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-md text-white bg-gradient-to-r ${top.bg}`}>
+                    {top.badge}
                   </span>
-                </button>
-              ))}
+                  <span className="text-[11px] font-bold text-slate-500">
+                    {top.count} {language === 'hi' ? 'प्रश्न उपलब्ध' : 'Questions'}
+                  </span>
+                </div>
+                <h3 className="text-sm font-black text-slate-900 group-hover:text-purple-700 transition-colors">
+                  {top.titleHi}
+                </h3>
+                <p className="text-xs text-slate-500 leading-snug">
+                  {top.desc}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className={`py-2 px-3.5 rounded-2xl text-xs font-black text-white bg-gradient-to-r ${top.bg} shadow-xs group-hover:scale-105 transition-transform shrink-0 flex items-center gap-1 cursor-pointer`}
+              >
+                <span>स्टार्ट</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
             </div>
-          </div>
-
-          {/* Level Selection */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-700 block">
-              2. कठिनाई स्तर चुनें (Select Difficulty Level):
-            </label>
-            <div className="grid grid-cols-4 gap-1.5">
-              {[
-                { id: 'all', label: 'सभी (All)' },
-                { id: 'beginner', label: 'Beginner' },
-                { id: 'intermediate', label: 'Medium' },
-                { id: 'advanced', label: 'Advanced' },
-              ].map((lvl) => (
-                <button
-                  key={lvl.id}
-                  type="button"
-                  onClick={() => {
-                    playTapSound(soundEnabled);
-                    setSelectedLevel(lvl.id as EnglishProficiencyLevel | 'all');
-                  }}
-                  className={`py-2 rounded-xl text-center text-xs font-bold transition-all cursor-pointer active:scale-95 ${
-                    selectedLevel === lvl.id
-                      ? 'bg-slate-900 text-white shadow-xs'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                  }`}
-                >
-                  {lvl.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Real Count Availability Info */}
-          <div className="p-3 bg-purple-50/70 border border-purple-100 rounded-2xl flex items-center justify-between text-xs">
-            <span className="text-purple-900 font-semibold">
-              वर्तमान उपलब्ध प्रश्न बैंक:
-            </span>
-            <span className="font-black text-purple-950">
-              {filtered.length} प्रश्न
-            </span>
-          </div>
-
-          {/* Start Full Screen Practice Button */}
-          <button
-            onClick={handleStartPractice}
-            type="button"
-            className="w-full py-4 bg-purple-600 hover:bg-purple-700 active:scale-98 text-white rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-purple-600/25 transition-all cursor-pointer"
-          >
-            <span>🚀 फुल स्क्रीन में अभ्यास शुरू करें</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
+          ))}
         </div>
       </div>
     );
   }
 
-  // 2. FULL SCREEN PRACTICE VIEW (When practice is active)
-  const totalTarget = selectedCount === 'infinite' ? null : selectedCount;
-  const progressPercent = totalTarget ? Math.min(100, Math.round(((sessionIndex + 1) / totalTarget) * 100)) : 100;
-
-  // Completion Screen
+  // 2. COMPLETION SCREEN AFTER FINISHING ALL QUESTIONS IN TEST
   if (isCompleted) {
     const totalDone = sessionCorrect + sessionWrong;
     const accuracy = totalDone > 0 ? Math.round((sessionCorrect / totalDone) * 100) : 0;
@@ -271,10 +328,10 @@ export const EnglishMcqView: React.FC<EnglishMcqViewProps> = ({
 
           <div>
             <h2 className="text-xl sm:text-2xl font-black tracking-tight">
-              अभ्यास पूरा हुआ!
+              टेस्ट अभ्यास पूरा हुआ!
             </h2>
             <p className="text-xs text-slate-400 mt-1">
-              शानदार प्रयास! आपकी अनुवाद गति और नियमों की समझ में सुधार हो रहा है।
+              आपने इस टेस्ट के सभी {totalDone} प्रश्न सफलतापूर्वक हल कर लिए हैं।
             </p>
           </div>
 
@@ -303,19 +360,22 @@ export const EnglishMcqView: React.FC<EnglishMcqViewProps> = ({
           {/* Action Buttons */}
           <div className="space-y-2.5">
             <button
-              onClick={handleStartPractice}
+              onClick={handleRestartFresh}
               type="button"
               className="w-full py-3.5 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
             >
               <RotateCcw className="w-4 h-4" />
-              <span>नया अभ्यास शुरू करें (Practice Again)</span>
+              <span>इसी टेस्ट का पुनः अभ्यास करें (Restart Test)</span>
             </button>
             <button
-              onClick={handleExitFullScreen}
+              onClick={() => {
+                playTapSound(soundEnabled);
+                setIsPracticeActive(false);
+              }}
               type="button"
               className="w-full py-3 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 rounded-xl font-bold text-xs transition-all cursor-pointer"
             >
-              <span>मेनू में वापस जाएं (Back to Menu)</span>
+              <span>दूसरा टॉपिक या टेस्ट चुनें (Choose Another Topic)</span>
             </button>
           </div>
         </div>
@@ -328,14 +388,21 @@ export const EnglishMcqView: React.FC<EnglishMcqViewProps> = ({
       <div className="fixed inset-0 z-50 bg-slate-950 text-white flex flex-col items-center justify-center p-4">
         <p className="text-sm font-bold text-slate-300">प्रश्न लोड हो रहे हैं...</p>
         <button
-          onClick={handleExitFullScreen}
+          onClick={() => {
+            playTapSound(soundEnabled);
+            setIsPracticeActive(false);
+          }}
           className="mt-4 px-4 py-2 bg-purple-600 rounded-xl text-xs font-bold"
         >
-          वापस जाएं
+          टॉपिक सूची पर जाएं
         </button>
       </div>
     );
   }
+
+  const totalQuestions = sessionQueue.length;
+  const currentNum = sessionIndex + 1;
+  const setProgressPercent = Math.min(100, Math.round((currentNum / (totalQuestions || 1)) * 100));
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950 text-white flex flex-col overflow-y-auto animate-in fade-in duration-200">
@@ -343,7 +410,10 @@ export const EnglishMcqView: React.FC<EnglishMcqViewProps> = ({
       <div className="sticky top-0 z-20 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 px-4 py-3">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
           <button
-            onClick={handleExitFullScreen}
+            onClick={() => {
+              playTapSound(soundEnabled);
+              setIsPracticeActive(false);
+            }}
             type="button"
             className="flex items-center gap-1.5 py-1 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer"
           >
@@ -353,7 +423,7 @@ export const EnglishMcqView: React.FC<EnglishMcqViewProps> = ({
 
           <div className="flex items-center gap-3">
             <span className="text-xs font-black text-purple-300 bg-purple-950/80 border border-purple-800 px-2.5 py-1 rounded-xl font-mono">
-              प्रश्न {sessionIndex + 1} / {totalTarget ? totalTarget : '∞'}
+              प्रश्न {currentNum} / {totalQuestions}
             </span>
             <span className="text-xs font-bold text-emerald-400 bg-emerald-950/80 border border-emerald-900 px-2 py-1 rounded-xl">
               ✓ {sessionCorrect}
@@ -367,14 +437,12 @@ export const EnglishMcqView: React.FC<EnglishMcqViewProps> = ({
         </div>
 
         {/* Progress Bar */}
-        {totalTarget && (
-          <div className="w-full bg-slate-800 h-1.5 mt-2 rounded-full overflow-hidden">
-            <div
-              className="bg-purple-500 h-full transition-all duration-300 ease-out"
-              style={{ width: `${progressPercent}%` }}
-            />
-          </div>
-        )}
+        <div className="w-full bg-slate-800 h-1.5 mt-2 rounded-full overflow-hidden max-w-2xl mx-auto">
+          <div
+            className="bg-purple-500 h-full transition-all duration-300 ease-out"
+            style={{ width: `${setProgressPercent}%` }}
+          />
+        </div>
       </div>
 
       {/* Main Full Screen Question Card */}
@@ -382,10 +450,10 @@ export const EnglishMcqView: React.FC<EnglishMcqViewProps> = ({
         {/* Topic Tag & Level */}
         <div className="flex items-center justify-between text-xs">
           <span className="font-bold text-purple-400 bg-purple-950/60 border border-purple-800/80 px-2.5 py-1 rounded-lg">
-            व्याकरण नियम: {currentQ.grammarRuleTag}
+            व्याकरण नियम: {currentQ.grammarRuleTag || 'English Grammar'}
           </span>
           <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider font-mono">
-            {currentQ.level}
+            {currentQ.level || 'Standard'}
           </span>
         </div>
 

@@ -125,6 +125,7 @@ export interface TypingPassage {
   category: string;
   content: string;
   wordCount: number;
+  language?: 'hi' | 'en';
 }
 
 export interface TypingResult {
@@ -271,4 +272,32 @@ export interface UserEnglishProgress {
   streakDays: number;
   totalScore: number;
   lastActive: string;
+}
+
+export interface NestedSubButton {
+  id: string;
+  title: string;
+  titleHi: string;
+  icon?: string;
+  actionType: 'link' | 'code' | 'text';
+  actionTarget?: string;
+  contentCode?: string;
+}
+
+export interface HomeCustomModule {
+  id: string;
+  title: string;
+  titleHi: string;
+  subtitle?: string;
+  subtitleHi?: string;
+  icon?: string;
+  color?: string;
+  badge?: string;
+  actionType: 'link' | 'section' | 'notice' | 'modal' | 'code' | 'nested_buttons';
+  actionTarget?: string;
+  contentCode?: string;
+  nestedButtons?: NestedSubButton[];
+  order: number;
+  active: boolean;
+  createdAt?: string;
 }

@@ -1,6 +1,9 @@
-import React from 'react';
-import { MainSection, Language } from '../types';
+import React, { useEffect, useState } from 'react';
+import { MainSection, Language, HomeCustomModule } from '../types';
 import { playTapSound } from '../utils/audio';
+import { FirestoreService } from '../firebase/firestoreService';
+import { CustomFeatureRunnerModal } from './CustomFeatureRunnerModal';
+import { MOCK_TESTS, PDF_NOTES_LIBRARY, TYPING_PASSAGES, QUESTIONS_DATABASE } from '../data/mockData';
 
 interface MainMenuProps {
   onSelectSection: (section: MainSection) => void;
@@ -13,9 +16,89 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   language,
   soundEnabled,
 }) => {
+  const [customModules, setCustomModules] = useState<HomeCustomModule[]>([]);
+  const [activeNotice, setActiveNotice] = useState<HomeCustomModule | null>(null);
+  const [activeCustomFeature, setActiveCustomFeature] = useState<HomeCustomModule | null>(null);
+
+  // Real data counts from Firestore
+  const [counts, setCounts] = useState({
+    mcq: 25,
+    spelling: 25,
+    sentences: 25,
+    vocab: 25,
+    typing: 25,
+    grammar: 12,
+    stories: 8,
+    mock: MOCK_TESTS.length,
+    notes: PDF_NOTES_LIBRARY.length,
+    passages: TYPING_PASSAGES.length,
+    quizTotal: QUESTIONS_DATABASE.length,
+  });
+
+  useEffect(() => {
+    const unsubscribeCustom = FirestoreService.subscribeHomeCustomModules((modules) => {
+      setCustomModules(modules);
+    });
+
+    const unsubMcq = FirestoreService.subscribeEnglishMcq((list) => {
+      setCounts((prev) => ({ ...prev, mcq: list.length }));
+    });
+    const unsubSpell = FirestoreService.subscribeEnglishSpelling((list) => {
+      setCounts((prev) => ({ ...prev, spelling: list.length }));
+    });
+    const unsubSent = FirestoreService.subscribeEnglishSentences((list) => {
+      setCounts((prev) => ({ ...prev, sentences: list.length }));
+    });
+    const unsubVocab = FirestoreService.subscribeEnglishVocab((list) => {
+      setCounts((prev) => ({ ...prev, vocab: list.length }));
+    });
+    const unsubTyping = FirestoreService.subscribeEnglishTyping((list) => {
+      setCounts((prev) => ({ ...prev, typing: list.length }));
+    });
+    const unsubGrammar = FirestoreService.subscribeEnglishGrammar((list) => {
+      setCounts((prev) => ({ ...prev, grammar: list.length }));
+    });
+    const unsubStories = FirestoreService.subscribeEnglishStories((list) => {
+      setCounts((prev) => ({ ...prev, stories: list.length }));
+    });
+
+    return () => {
+      unsubscribeCustom();
+      unsubMcq();
+      unsubSpell();
+      unsubSent();
+      unsubVocab();
+      unsubTyping();
+      unsubGrammar();
+      unsubStories();
+    };
+  }, []);
+
+  const totalEnglishItems =
+    counts.mcq +
+    counts.spelling +
+    counts.sentences +
+    counts.vocab +
+    counts.typing +
+    counts.grammar +
+    counts.stories;
+
   const handleTap = (section: MainSection) => {
     playTapSound(soundEnabled);
     onSelectSection(section);
+  };
+
+  const handleCustomTap = (mod: HomeCustomModule) => {
+    playTapSound(soundEnabled);
+    if (mod.actionType === 'link' && mod.actionTarget) {
+      window.open(mod.actionTarget, '_blank');
+    } else if (mod.actionType === 'section' && mod.actionTarget) {
+      onSelectSection(mod.actionTarget as MainSection);
+    } else if (mod.actionType === 'code' || mod.actionType === 'nested_buttons') {
+      setActiveCustomFeature(mod);
+    } else if (mod.actionType === 'notice' || mod.actionType === 'modal') {
+      setActiveNotice(mod);
+    }
   };
 
   const menuItems = [
@@ -23,50 +106,56 @@ export const MainMenu: React.FC<MainMenuProps> = ({
       id: 'quiz' as MainSection,
       icon: '⚡',
       title: language === 'hi' ? 'Quiz अभ्यास' : 'Quiz Practice',
-      subtitle: language === 'hi' ? 'विषयवार MCQs' : 'Subject MCQs',
+      subtitle: language === 'hi' ? `${counts.quizTotal} विषयवार MCQs` : `${counts.quizTotal} Subject MCQs`,
+      countBadge: `${counts.quizTotal} प्रश्न`,
     },
     {
       id: 'mock' as MainSection,
       icon: '📝',
       title: language === 'hi' ? 'Mock टेस्ट' : 'Mock Tests',
-      subtitle: language === 'hi' ? 'लाइव टाइमर टेस्ट' : 'Real Timer Series',
+      subtitle: language === 'hi' ? `${counts.mock} लाइव टाइमर टेस्ट` : `${counts.mock} Live Series`,
+      countBadge: `${counts.mock} टेस्ट`,
     },
     {
       id: 'notes' as MainSection,
       icon: '📚',
       title: language === 'hi' ? 'Notes लाइब्रेरी' : 'PDF Notes',
-      subtitle: language === 'hi' ? 'स्पष्ट इन-ऐप नोट्स' : 'Clear Reading',
+      subtitle: language === 'hi' ? `${counts.notes} स्पष्ट PDF नोट्स` : `${counts.notes} Clear Reading`,
+      countBadge: `${counts.notes} नोट्स`,
     },
     {
       id: 'typing' as MainSection,
       icon: '⌨️',
       title: language === 'hi' ? 'Typing Skills' : 'Typing Test',
-      subtitle: language === 'hi' ? 'SSC DEST स्पीड' : 'Speed Simulator',
+      subtitle: language === 'hi' ? `${counts.passages} SSC DEST पैसेज` : `${counts.passages} Passages`,
+      countBadge: `${counts.passages} पैसेज`,
     },
     {
       id: 'calculations' as MainSection,
       icon: '🧮',
       title: language === 'hi' ? 'Calculations' : 'Math Speed',
       subtitle: language === 'hi' ? 'BODMAS व ट्रिक्स' : 'BODMAS & Tricks',
+      countBadge: 'असीमित ड्रिल',
     },
     {
       id: 'english' as MainSection,
       icon: '🔤',
       title: language === 'hi' ? 'English Improve' : 'English Booster',
-      subtitle: language === 'hi' ? 'शब्दावली व व्याकरण' : 'Vocab & Rules',
+      subtitle: language === 'hi' ? `${totalEnglishItems} प्रश्न व शब्द` : `${totalEnglishItems} Practice Items`,
+      countBadge: `${totalEnglishItems} आइटम`,
     },
   ];
 
   return (
     <div className="max-w-md mx-auto px-4 py-4 flex flex-col items-center justify-center min-h-[calc(100vh-100px)]">
-      {/* 2-Column Grid Button Blocks (Side by Side matching the screenshot style) */}
+      {/* 2-Column Grid Button Blocks */}
       <div className="w-full grid grid-cols-2 gap-3 sm:gap-3.5">
         {menuItems.map((item) => (
           <button
             key={item.id}
             onClick={() => handleTap(item.id)}
             type="button"
-            className="relative flex flex-col items-center justify-center p-4 sm:p-4.5 bg-white rounded-2xl border border-slate-200/90 shadow-xs hover:border-blue-300 active:scale-95 active:bg-blue-50/60 active:border-blue-400 active:shadow-inner transition-all duration-150 cursor-pointer min-h-[118px] select-none text-center w-full group"
+            className="relative flex flex-col items-center justify-center p-4 sm:p-4.5 bg-white rounded-2xl border border-slate-200/90 shadow-xs hover:border-blue-300 active:scale-95 active:bg-blue-50/60 active:border-blue-400 active:shadow-inner transition-all duration-150 cursor-pointer min-h-[124px] select-none text-center w-full group"
           >
             {/* Top Right Green Active Indicator Dot */}
             <div className="absolute top-3 right-3 flex items-center justify-center">
@@ -87,9 +176,103 @@ export const MainMenu: React.FC<MainMenuProps> = ({
                 {item.subtitle}
               </span>
             </div>
+
+            {/* Bottom Real Count Pill */}
+            <div className="mt-1.5">
+              <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 group-hover:bg-blue-100 group-hover:text-blue-800 transition-colors">
+                {item.countBadge}
+              </span>
+            </div>
+          </button>
+        ))}
+
+        {/* Dynamic Admin-Added Custom Home Modules & Buttons */}
+        {customModules.map((mod) => (
+          <button
+            key={mod.id}
+            onClick={() => handleCustomTap(mod)}
+            type="button"
+            className="relative flex flex-col items-center justify-center p-4 sm:p-4.5 bg-gradient-to-br from-indigo-50 to-blue-50 rounded-2xl border border-indigo-200 shadow-xs hover:border-indigo-400 active:scale-95 active:bg-indigo-100 transition-all duration-150 cursor-pointer min-h-[124px] select-none text-center w-full group"
+          >
+            {/* Top Right Badge / Indicator */}
+            <div className="absolute top-2.5 right-2.5 flex items-center justify-center">
+              {mod.badge ? (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-600 text-white shadow-xs">
+                  {mod.badge}
+                </span>
+              ) : (
+                <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 ring-2 ring-indigo-100 block" />
+              )}
+            </div>
+
+            {/* Icon */}
+            <div className="text-3xl filter drop-shadow-xs group-hover:scale-110 transition-transform duration-150 mt-1">
+              {mod.icon || '⭐'}
+            </div>
+
+            {/* Title & Subtitle */}
+            <div className="mt-2 text-center px-1">
+              <span className="block text-xs sm:text-sm font-bold text-indigo-900 group-hover:text-indigo-700 tracking-tight leading-snug">
+                {language === 'hi' ? mod.titleHi || mod.title : mod.title}
+              </span>
+              {(mod.subtitle || mod.subtitleHi) && (
+                <span className="block text-[11px] text-indigo-600/80 font-medium mt-0.5 leading-tight">
+                  {language === 'hi' ? mod.subtitleHi || mod.subtitle : mod.subtitle}
+                </span>
+              )}
+            </div>
+
+            {/* Action Type Badge */}
+            <div className="mt-1.5">
+              <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-indigo-200/80 text-indigo-900">
+                {mod.actionType === 'code' ? '💻 Interactive App' : mod.actionType === 'nested_buttons' ? '📂 Sub-Buttons' : '✨ Custom Tool'}
+              </span>
+            </div>
           </button>
         ))}
       </div>
+
+      {/* Admin Notice / Custom Module Popup Modal */}
+      {activeNotice && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-slate-100 text-center relative animate-scale-up">
+            <div className="text-4xl mb-3">{activeNotice.icon || '📌'}</div>
+            <h3 className="text-lg font-bold text-slate-800">
+              {language === 'hi' ? activeNotice.titleHi || activeNotice.title : activeNotice.title}
+            </h3>
+            <p className="text-sm text-slate-600 mt-2 whitespace-pre-line">
+              {language === 'hi'
+                ? activeNotice.subtitleHi || activeNotice.subtitle
+                : activeNotice.subtitle}
+            </p>
+            {activeNotice.actionTarget && activeNotice.actionType === 'link' && (
+              <a
+                href={activeNotice.actionTarget}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-4 inline-block w-full py-2.5 px-4 bg-indigo-600 text-white rounded-xl font-bold text-sm shadow-md hover:bg-indigo-700 transition-colors"
+              >
+                {language === 'hi' ? 'आगे बढ़ें / लिंक खोलें' : 'Open Link'}
+              </a>
+            )}
+            <button
+              onClick={() => setActiveNotice(null)}
+              className="mt-3 w-full py-2 bg-slate-100 text-slate-700 rounded-xl font-semibold text-sm hover:bg-slate-200 transition-colors"
+            >
+              {language === 'hi' ? 'बंद करें' : 'Close'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Interactive Custom Code / Feature Runner Modal */}
+      {activeCustomFeature && (
+        <CustomFeatureRunnerModal
+          module={activeCustomFeature}
+          language={language}
+          onClose={() => setActiveCustomFeature(null)}
+        />
+      )}
     </div>
   );
 };

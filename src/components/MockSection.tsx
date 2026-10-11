@@ -121,6 +121,11 @@ export const MockSection: React.FC<MockSectionProps> = ({
       ...prev,
       [currentQuestionIndex]: optionIndex,
     }));
+
+    if (activeTest && activeTest.questions[currentQuestionIndex]) {
+      const q = activeTest.questions[currentQuestionIndex];
+      StorageService.addSeenEnglishQuestion(q.questionHi || q.questionEn || q.id);
+    }
   };
 
   const handleSaveAndNext = () => {

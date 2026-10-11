@@ -55,12 +55,62 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
   const [bookmarks, setBookmarks] = useState<string[]>(() => StorageService.getBookmarks());
   const [lastClickedOption, setLastClickedOption] = useState<{ qIndex: number; optIndex: number; isCorrect: boolean } | null>(null);
 
-  // Get active questions for the topic
+  // Live generated questions pool state
+  const [dynamicQuestionsMap, setDynamicQuestionsMap] = useState<Record<string, Question[]>>({});
+
+  // Background silent Gemini AI quiz question generator
+  const fetchLiveQuizQuestions = async (subjectId: string, topicId: string) => {
+    try {
+      const key = `${subjectId}_${topicId}`;
+      const existing = dynamicQuestionsMap[key] || [];
+      const res = await fetch('/api/ai/generate-quiz-questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subjectId,
+          topicId,
+          count: 10,
+          existingQuestions: existing.map((q) => q.questionHi || q.questionEn),
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.questions) && data.questions.length > 0) {
+          setDynamicQuestionsMap((prev) => ({
+            ...prev,
+            [key]: [...(prev[key] || []), ...data.questions],
+          }));
+        }
+      }
+    } catch {
+      // Fail silently, no UI errors
+    }
+  };
+
+  // Get active questions for the topic with non-repeating seen prioritization
   const getTopicQuestions = (topic: Topic): Question[] => {
-    const list = QUESTIONS_DATABASE.filter(
+    const key = `${topic.subjectId}_${topic.id}`;
+    const baseList = QUESTIONS_DATABASE.filter(
       (q) => q.topicId === topic.id || q.subjectId === topic.subjectId
     );
-    return list.length > 0 ? list : QUESTIONS_DATABASE.slice(0, 5);
+    const liveList = dynamicQuestionsMap[key] || [];
+    const combined = [...baseList, ...liveList];
+
+    const seenSet = StorageService.getSeenEnglishQuestions();
+    const unseen: Question[] = [];
+    const seen: Question[] = [];
+
+    for (const q of combined) {
+      const qKey = (q.questionHi || q.questionEn || q.id || '').trim().toLowerCase();
+      if (seenSet.has(qKey)) {
+        seen.push(q);
+      } else {
+        unseen.push(q);
+      }
+    }
+
+    const result = unseen.length > 0 ? unseen : seen;
+    return result.length > 0 ? result : QUESTIONS_DATABASE.slice(0, 5);
   };
 
   const handleSelectSubject = (subject: Subject) => {
@@ -77,10 +127,15 @@ export const QuizSection: React.FC<QuizSectionProps> = ({
     setIsAnswerRevealed({});
     setCompletedAttempt(null);
     setQuizStartTime(Date.now());
+
+    // Trigger silent background Gemini generation for live fresh questions
+    fetchLiveQuizQuestions(topic.subjectId, topic.id);
   };
 
   const handleOptionClick = (optionIndex: number, currentQ: Question) => {
     if (isAnswerRevealed[currentQuestionIndex]) return; // already answered
+
+    StorageService.addSeenEnglishQuestion(currentQ.questionHi || currentQ.questionEn || currentQ.id);
 
     const isCorrect = optionIndex === currentQ.correctIndex;
     if (isCorrect) {
