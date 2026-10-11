@@ -1,6 +1,6 @@
 import React from 'react';
 import { MainSection, Language } from '../types';
-import { Volume2, VolumeX, ArrowLeft, Home, Settings } from 'lucide-react';
+import { Volume2, VolumeX, ArrowLeft, Home } from 'lucide-react';
 import { Logo } from './Logo';
 import { playTapSound } from '../utils/audio';
 
@@ -13,7 +13,6 @@ interface HeaderProps {
   onToggleLanguage: () => void;
   soundEnabled: boolean;
   onToggleSound: () => void;
-  onOpenAdmin?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -25,7 +24,6 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleLanguage,
   soundEnabled,
   onToggleSound,
-  onOpenAdmin,
 }) => {
   const getSectionTitle = () => {
     if (currentSection === 'quiz') return language === 'hi' ? 'Quiz (अभ्यास)' : 'Quiz Practice';
@@ -101,20 +99,6 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Right Controls */}
         <div className="flex items-center gap-1.5 shrink-0">
-          {/* Admin Panel Button */}
-          {onOpenAdmin && (
-            <button
-              onClick={() => {
-                playTapSound(soundEnabled);
-                onOpenAdmin();
-              }}
-              title={language === 'hi' ? 'एडमिन पोर्टल (बटन व सेक्शन प्रबंधन)' : 'Admin Panel (Buttons & Sections)'}
-              className="w-8 h-8 flex items-center justify-center bg-amber-400 hover:bg-amber-300 text-amber-950 border border-amber-300 rounded-xl font-bold active:scale-90 transition-all cursor-pointer shadow-xs"
-            >
-              <Settings className="w-4 h-4" />
-            </button>
-          )}
-
           {/* Language Toggle */}
           <button
             onClick={() => {

@@ -59,6 +59,12 @@ export default function App() {
         return;
       }
 
+      // Admin panel direct link if URL hash is #/admin or #admin
+      if (hash === '#/admin' || hash === '#admin') {
+        setIsAdminModalOpen(true);
+        return;
+      }
+
       // Quiz section
       if (hash.startsWith('#/quiz')) {
         setCurrentSection('quiz');
@@ -237,7 +243,6 @@ export default function App() {
         onToggleLanguage={toggleLanguage}
         soundEnabled={settings.soundEnabled}
         onToggleSound={toggleSound}
-        onOpenAdmin={() => setIsAdminModalOpen(true)}
       />
 
       {/* Main View Router */}
@@ -249,7 +254,6 @@ export default function App() {
             onSelectCustomModule={navigateToCustomModule}
             language={settings.language}
             soundEnabled={settings.soundEnabled}
-            onOpenAdmin={() => setIsAdminModalOpen(true)}
           />
         )}
 

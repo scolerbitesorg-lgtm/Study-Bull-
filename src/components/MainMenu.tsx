@@ -10,7 +10,6 @@ interface MainMenuProps {
   onSelectCustomModule: (module: HomeCustomModule) => void;
   language: Language;
   soundEnabled: boolean;
-  onOpenAdmin?: () => void;
 }
 
 export const MainMenu: React.FC<MainMenuProps> = ({
@@ -18,7 +17,6 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   onSelectCustomModule,
   language,
   soundEnabled,
-  onOpenAdmin,
 }) => {
   // Cache-first initial state: Instant zero-latency render on refresh!
   const [customModules, setCustomModules] = useState<HomeCustomModule[]>(() =>
