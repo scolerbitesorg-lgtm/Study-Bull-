@@ -1,0 +1,135 @@
+{
+  "entities": {
+    "ExamCategory": {
+      "title": "ExamCategory",
+      "description": "Exam category displayed on mock tests and home menu",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "name": { "type": "string", "maxLength": 100 },
+        "icon": { "type": "string", "maxLength": 16 },
+        "active": { "type": "boolean" },
+        "badge": { "type": "string", "maxLength": 32 },
+        "category": { "type": "string", "maxLength": 50 },
+        "description": { "type": "string", "maxLength": 255 },
+        "testCount": { "type": "number" }
+      },
+      "required": ["id", "name", "icon", "active"]
+    },
+    "Subject": {
+      "title": "Subject",
+      "description": "Examination subjects for quizzes and notes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "name": { "type": "string", "maxLength": 100 },
+        "nameHi": { "type": "string", "maxLength": 100 },
+        "icon": { "type": "string", "maxLength": 16 },
+        "topicCount": { "type": "number" },
+        "questionCount": { "type": "number" }
+      },
+      "required": ["id", "name", "icon"]
+    },
+    "Topic": {
+      "title": "Topic",
+      "description": "Topic within a subject",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "subjectId": { "type": "string", "maxLength": 64 },
+        "name": { "type": "string", "maxLength": 150 },
+        "nameHi": { "type": "string", "maxLength": 150 },
+        "questionCount": { "type": "number" },
+        "difficulty": { "type": "string", "enum": ["Easy", "Moderate", "Hard"] }
+      },
+      "required": ["id", "subjectId", "name"]
+    },
+    "Question": {
+      "title": "Question",
+      "description": "Examination practice question",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "topicId": { "type": "string", "maxLength": 64 },
+        "subjectId": { "type": "string", "maxLength": 64 },
+        "questionEn": { "type": "string", "maxLength": 1000 },
+        "questionHi": { "type": "string", "maxLength": 1000 },
+        "correctIndex": { "type": "number" },
+        "explanationEn": { "type": "string", "maxLength": 1000 },
+        "explanationHi": { "type": "string", "maxLength": 1000 }
+      },
+      "required": ["id", "questionEn", "correctIndex", "explanationEn"]
+    },
+    "MockTest": {
+      "title": "MockTest",
+      "description": "Full length mock test definition",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "examId": { "type": "string", "maxLength": 64 },
+        "title": { "type": "string", "maxLength": 200 },
+        "durationMinutes": { "type": "number" },
+        "totalMarks": { "type": "number" },
+        "positiveMarks": { "type": "number" },
+        "negativeMarks": { "type": "number" }
+      },
+      "required": ["id", "examId", "title", "durationMinutes", "totalMarks"]
+    },
+    "NoteItem": {
+      "title": "NoteItem",
+      "description": "Topic study note document",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "subjectId": { "type": "string", "maxLength": 64 },
+        "title": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 500 },
+        "pagesCount": { "type": "number" }
+      },
+      "required": ["id", "subjectId", "title"]
+    },
+    "TypingPassage": {
+      "title": "TypingPassage",
+      "description": "Text passage for typing speed test",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "title": { "type": "string", "maxLength": 200 },
+        "category": { "type": "string", "maxLength": 100 },
+        "content": { "type": "string", "maxLength": 5000 },
+        "wordCount": { "type": "number" }
+      },
+      "required": ["id", "title", "content"]
+    }
+  },
+  "firestore": {
+    "/categories/{categoryId}": {
+      "schema": "ExamCategory",
+      "description": "Exam categories for mock tests"
+    },
+    "/subjects/{subjectId}": {
+      "schema": "Subject",
+      "description": "Subjects list for quizzes and notes"
+    },
+    "/topics/{topicId}": {
+      "schema": "Topic",
+      "description": "Topics per subject"
+    },
+    "/questions/{questionId}": {
+      "schema": "Question",
+      "description": "MCQ practice question collection"
+    },
+    "/mockTests/{mockTestId}": {
+      "schema": "MockTest",
+      "description": "Full length mock tests collection"
+    },
+    "/notes/{noteId}": {
+      "schema": "NoteItem",
+      "description": "Subject and topic PDF notes collection"
+    },
+    "/typingPassages/{passageId}": {
+      "schema": "TypingPassage",
+      "description": "Typing skill test passages collection"
+    }
+  }
+}

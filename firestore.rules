@@ -1,0 +1,84 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Public Educational Content collections
+    match /categories/{categoryId} {
+      allow read: if isValidId(categoryId);
+      allow write: if isValidId(categoryId);
+    }
+
+    match /subjects/{subjectId} {
+      allow read: if isValidId(subjectId);
+      allow write: if isValidId(subjectId);
+    }
+
+    match /topics/{topicId} {
+      allow read: if isValidId(topicId);
+      allow write: if isValidId(topicId);
+    }
+
+    match /questions/{questionId} {
+      allow read: if isValidId(questionId);
+      allow write: if isValidId(questionId);
+    }
+
+    match /mockTests/{mockTestId} {
+      allow read: if isValidId(mockTestId);
+      allow write: if isValidId(mockTestId);
+    }
+
+    match /notes/{noteId} {
+      allow read: if isValidId(noteId);
+      allow write: if isValidId(noteId);
+    }
+
+    match /typingPassages/{passageId} {
+      allow read: if isValidId(passageId);
+      allow write: if isValidId(passageId);
+    }
+
+    // English Learning Modules collections (Vocab, Grammar, Sentences, Spelling, Stories, MCQ)
+    match /englishVocab/{vocabId} {
+      allow read, write: if isValidId(vocabId);
+    }
+
+    match /englishGrammar/{grammarId} {
+      allow read, write: if isValidId(grammarId);
+    }
+
+    match /englishSentences/{sentenceId} {
+      allow read, write: if isValidId(sentenceId);
+    }
+
+    match /englishSpelling/{spellingId} {
+      allow read, write: if isValidId(spellingId);
+    }
+
+    match /englishStories/{storyId} {
+      allow read, write: if isValidId(storyId);
+    }
+
+    match /englishMcq/{mcqId} {
+      allow read, write: if isValidId(mcqId);
+    }
+
+    match /englishProgress/{progressId} {
+      allow read, write: if isValidId(progressId);
+    }
+
+    // User attempts and scores
+    match /users/{userId}/attempts/{attemptId} {
+      allow read, write: if isValidId(userId) && isValidId(attemptId);
+    }
+  }
+}

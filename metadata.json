@@ -1,0 +1,6 @@
+{
+  "name": "Study Bull - Mobile Examination Portal",
+  "description": "Mobile examination portal for SSC, Delhi Police, and competitive exams with dynamic Quizzes, Mock Tests with question palette & timer, and PDF Notes library.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
